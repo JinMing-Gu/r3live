@@ -1,21 +1,21 @@
-/* 
-This code is the implementation of our paper "R3LIVE: A Robust, Real-time, RGB-colored, 
+/*
+This code is the implementation of our paper "R3LIVE: A Robust, Real-time, RGB-colored,
 LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package".
 
 Author: Jiarong Lin   < ziv.lin.ljr@gmail.com >
 
 If you use any code of this repo in your academic research, please cite at least
 one of our papers:
-[1] Lin, Jiarong, and Fu Zhang. "R3LIVE: A Robust, Real-time, RGB-colored, 
-    LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package." 
+[1] Lin, Jiarong, and Fu Zhang. "R3LIVE: A Robust, Real-time, RGB-colored,
+    LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package."
 [2] Xu, Wei, et al. "Fast-lio2: Fast direct lidar-inertial odometry."
 [3] Lin, Jiarong, et al. "R2LIVE: A Robust, Real-time, LiDAR-Inertial-Visual
-     tightly-coupled state Estimator and mapping." 
-[4] Xu, Wei, and Fu Zhang. "Fast-lio: A fast, robust lidar-inertial odometry 
+     tightly-coupled state Estimator and mapping."
+[4] Xu, Wei, and Fu Zhang. "Fast-lio: A fast, robust lidar-inertial odometry
     package by tightly-coupled iterated kalman filter."
-[5] Cai, Yixi, Wei Xu, and Fu Zhang. "ikd-Tree: An Incremental KD Tree for 
+[5] Cai, Yixi, Wei Xu, and Fu Zhang. "ikd-Tree: An Incremental KD Tree for
     Robotic Applications."
-[6] Lin, Jiarong, and Fu Zhang. "Loam-livox: A fast, robust, high-precision 
+[6] Lin, Jiarong, and Fu Zhang. "Loam-livox: A fast, robust, high-precision
     LiDAR odometry and mapping package for LiDARs of small FoV."
 
 For commercial use, please contact me < ziv.lin.ljr@gmail.com > and
@@ -61,124 +61,124 @@ Dr. Fu Zhang < fuzhang@hku.hk >.
 
 namespace Common_tools
 {
-template < typename T >
-struct Random_generator_float
-{
-    std::random_device                  random_device;
-    std::mt19937                        m_random_engine;
-    std::uniform_real_distribution< T > m_dist;
-    std::normal_distribution< T >       m_dist_normal;
-    Random_generator_float( bool if_true_random = true, int seed = 0 )
+    template <typename T>
+    struct Random_generator_float
     {
-        if ( if_true_random )
+        std::random_device random_device;
+        std::mt19937 m_random_engine;
+        std::uniform_real_distribution<T> m_dist;
+        std::normal_distribution<T> m_dist_normal;
+        Random_generator_float(bool if_true_random = true, int seed = 0)
         {
-            m_random_engine = std::mt19937( std::random_device{}() );
+            if (if_true_random)
+            {
+                m_random_engine = std::mt19937(std::random_device{}());
+            }
+            else
+            {
+                m_random_engine = std::mt19937(seed);
+            }
         }
-        else
-        {
-            m_random_engine = std::mt19937( seed );
-        }
-    }
-    ~Random_generator_float(){};
+        ~Random_generator_float(){};
 
-    T rand_uniform( T low = 0.0, T hight = 1.0 )
+        T rand_uniform(T low = 0.0, T hight = 1.0)
+        {
+            m_dist = std::uniform_real_distribution<T>(low, hight);
+            return m_dist(m_random_engine);
+        }
+
+        T rand_normal(T mean = 0.0, T std = 100.0)
+        {
+            m_dist_normal = std::normal_distribution<T>(mean, std);
+            return m_dist_normal(m_random_engine);
+        }
+
+        T *rand_array_uniform(T low = 0.0, T hight = 1.0, size_t numbers = 100, T *res = nullptr)
+        {
+            if (res == nullptr)
+            {
+                res = new T[numbers];
+            }
+            m_dist = std::uniform_real_distribution<T>(low, hight);
+            for (size_t i = 0; i < numbers; i++)
+            {
+                res[i] = m_dist(m_random_engine);
+            }
+            return res;
+        }
+
+        T *rand_array_normal(T mean = 0.0, T std = 1.0, size_t numbers = 100, T *res = nullptr)
+        {
+            if (res == nullptr)
+            {
+                res = new T[numbers];
+            }
+            m_dist_normal = std::normal_distribution<T>(mean, std);
+            for (size_t i = 0; i < numbers; i++)
+            {
+                res[i] = m_dist_normal(m_random_engine);
+            }
+            return res;
+        }
+    };
+
+    template <typename T>
+    struct Random_generator_int
     {
-        m_dist = std::uniform_real_distribution< T >( low, hight );
-        return m_dist( m_random_engine );
-    }
+        std::random_device random_device;
+        std::mt19937 m_random_engine;
+        std::uniform_int_distribution<T> m_dist;
+        Random_generator_int(bool if_true_random = true, int seed = 0)
+        {
+            if (if_true_random)
+            {
+                m_random_engine = std::mt19937(std::random_device{}());
+            }
+            else
+            {
+                m_random_engine = std::mt19937(seed);
+            }
+        }
 
-    T rand_normal( T mean = 0.0, T std = 100.0 )
-    {
-        m_dist_normal = std::normal_distribution< T >( mean, std );
-        return m_dist_normal( m_random_engine );
-    }
+        ~Random_generator_int(){};
 
-    T *rand_array_uniform( T low = 0.0, T hight = 1.0, size_t numbers = 100, T *res = nullptr )
-    {
-        if ( res == nullptr )
+        T rand_uniform(T low = 0, T hight = 100)
         {
-            res = new T[ numbers ];
+            m_dist = std::uniform_int_distribution<T>(low, hight);
+            return m_dist(m_random_engine);
         }
-        m_dist = std::uniform_real_distribution< T >( low, hight );
-        for ( size_t i = 0; i < numbers; i++ )
-        {
-            res[ i ] = m_dist( m_random_engine );
-        }
-        return res;
-    }
 
-    T *rand_array_normal( T mean = 0.0, T std = 1.0, size_t numbers = 100, T *res = nullptr )
-    {
-        if ( res == nullptr )
+        T *rand_array_uniform(T low = 0.0, T hight = 1.0, size_t numbers = 100, T *res = nullptr)
         {
-            res = new T[ numbers ];
+            if (res == nullptr)
+            {
+                res = new T[numbers];
+            }
+            m_dist = std::uniform_int_distribution<T>(low, hight);
+            for (size_t i = 0; i < numbers; i++)
+            {
+                res[i] = m_dist(m_random_engine);
+            }
+            return res;
         }
-        m_dist_normal = std::normal_distribution< T >( mean, std );
-        for ( size_t i = 0; i < numbers; i++ )
-        {
-            res[ i ] = m_dist_normal( m_random_engine );
-        }
-        return res;
-    }
-};
 
-template < typename T >
-struct Random_generator_int
-{
-    std::random_device                 random_device;
-    std::mt19937                       m_random_engine;
-    std::uniform_int_distribution< T > m_dist;
-    Random_generator_int( bool if_true_random = true, int seed = 0 )
-    {
-        if ( if_true_random )
+        T *rand_array_norepeat(T low, T high, T k)
         {
-            m_random_engine = std::mt19937( std::random_device{}() );
+            T n = high - low;
+            T *res_array = new T[k];
+            std::vector<int> foo;
+            foo.resize(n);
+            for (T i = 1; i <= n; ++i)
+                foo[i] = i + low;
+            std::shuffle(foo.begin(), foo.end(), m_random_engine);
+            for (T i = 0; i < k; ++i)
+            {
+                res_array[i] = foo[i];
+                // std::cout << foo[ i ] << " ";
+            }
+            return res_array;
         }
-        else
-        {
-            m_random_engine = std::mt19937( seed );
-        }
-    }
-
-    ~Random_generator_int(){};
-
-    T rand_uniform( T low = 0, T hight = 100 )
-    {
-        m_dist = std::uniform_int_distribution< T >( low, hight );
-        return m_dist( m_random_engine );
-    }
-
-    T *rand_array_uniform( T low = 0.0, T hight = 1.0, size_t numbers = 100, T *res = nullptr )
-    {
-        if ( res == nullptr )
-        {
-            res = new T[ numbers ];
-        }
-        m_dist = std::uniform_int_distribution< T >( low, hight );
-        for ( size_t i = 0; i < numbers; i++ )
-        {
-            res[ i ] = m_dist( m_random_engine );
-        }
-        return res;
-    }
-
-    T *rand_array_norepeat( T low, T high, T k )
-    {
-        T                  n = high - low;
-        T *                res_array = new T[ k ];
-        std::vector< int > foo;
-        foo.resize( n );
-        for ( T i = 1; i <= n; ++i )
-            foo[ i ] = i + low;
-        std::shuffle( foo.begin(), foo.end(), m_random_engine );
-        for ( T i = 0; i < k; ++i )
-        {
-            res_array[ i ] = foo[ i ];
-            // std::cout << foo[ i ] << " ";
-        }
-        return res_array;
-    }
-};
+    };
 
 } // namespace Common_tools
 

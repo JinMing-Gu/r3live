@@ -1,21 +1,21 @@
-/* 
-This code is the implementation of our paper "R3LIVE: A Robust, Real-time, RGB-colored, 
+/*
+This code is the implementation of our paper "R3LIVE: A Robust, Real-time, RGB-colored,
 LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package".
 
 Author: Jiarong Lin   < ziv.lin.ljr@gmail.com >
 
 If you use any code of this repo in your academic research, please cite at least
 one of our papers:
-[1] Lin, Jiarong, and Fu Zhang. "R3LIVE: A Robust, Real-time, RGB-colored, 
-    LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package." 
+[1] Lin, Jiarong, and Fu Zhang. "R3LIVE: A Robust, Real-time, RGB-colored,
+    LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package."
 [2] Xu, Wei, et al. "Fast-lio2: Fast direct lidar-inertial odometry."
 [3] Lin, Jiarong, et al. "R2LIVE: A Robust, Real-time, LiDAR-Inertial-Visual
-     tightly-coupled state Estimator and mapping." 
-[4] Xu, Wei, and Fu Zhang. "Fast-lio: A fast, robust lidar-inertial odometry 
+     tightly-coupled state Estimator and mapping."
+[4] Xu, Wei, and Fu Zhang. "Fast-lio: A fast, robust lidar-inertial odometry
     package by tightly-coupled iterated kalman filter."
-[5] Cai, Yixi, Wei Xu, and Fu Zhang. "ikd-Tree: An Incremental KD Tree for 
+[5] Cai, Yixi, Wei Xu, and Fu Zhang. "ikd-Tree: An Incremental KD Tree for
     Robotic Applications."
-[6] Lin, Jiarong, and Fu Zhang. "Loam-livox: A fast, robust, high-precision 
+[6] Lin, Jiarong, and Fu Zhang. "Loam-livox: A fast, robust, high-precision
     LiDAR odometry and mapping package for LiDARs of small FoV."
 
 For commercial use, please contact me < ziv.lin.ljr@gmail.com > and
@@ -56,28 +56,29 @@ using std::endl;
 
 namespace Common_tools
 {
-template < typename T >
-inline T get_ros_parameter( ros::NodeHandle &nh, const std::string parameter_name, T &parameter, T default_val )
-{
-    nh.param< T >( parameter_name.c_str(), parameter, default_val );
-    // ENABLE_SCREEN_PRINTF;
-    cout << "[Ros_parameter]: " << parameter_name << " ==> " << parameter << std::endl;
-    return parameter;
-}
-
-template < typename T >
-inline std::vector< T > get_ros_parameter_array( ros::NodeHandle &nh, const std::string parameter_name )
-{
-    std::vector< T > config_vector;
-    nh.getParam( parameter_name, config_vector );
-    cout << "[Ros_configurations]: " << parameter_name << ":{  ";
-    for(int i =0 ; i < config_vector.size(); i++)
+    template <typename T>
+    inline T get_ros_parameter(ros::NodeHandle &nh, const std::string parameter_name, T &parameter, T default_val)
     {
-        cout << config_vector[i] << ", ";
+        nh.param<T>(parameter_name.c_str(), parameter, default_val);
+        // ENABLE_SCREEN_PRINTF;
+        cout << "[Ros_parameter]: " << parameter_name << " ==> " << parameter << std::endl;
+        return parameter;
     }
-    cout << "\b\b" << "  }" << endl;
-    return config_vector;
-}
+
+    template <typename T>
+    inline std::vector<T> get_ros_parameter_array(ros::NodeHandle &nh, const std::string parameter_name)
+    {
+        std::vector<T> config_vector;
+        nh.getParam(parameter_name, config_vector);
+        cout << "[Ros_configurations]: " << parameter_name << ":{  ";
+        for (int i = 0; i < config_vector.size(); i++)
+        {
+            cout << config_vector[i] << ", ";
+        }
+        cout << "\b\b"
+             << "  }" << endl;
+        return config_vector;
+    }
 }
 
 using Common_tools::get_ros_parameter;

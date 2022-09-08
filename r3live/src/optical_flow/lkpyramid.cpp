@@ -66,10 +66,10 @@ inline void calc_sharr_deriv(const cv::Mat &src, cv::Mat &dst)
     AutoBuffer<deriv_type> _tempBuf(delta * 2 + 64);
     deriv_type *trow0 = alignPtr(_tempBuf + cn, 16), *trow1 = alignPtr(trow0 + delta, 16);
 
-// #if CV_SIMD128
+    // #if CV_SIMD128
     v_int16x8 c3 = v_setall_s16(3), c10 = v_setall_s16(10);
     bool haveSIMD = checkHardwareSupport(CV_CPU_SSE2) || checkHardwareSupport(CV_CPU_NEON);
-// #endif
+    // #endif
 
     for (y = 0; y < rows; y++)
     {
@@ -82,7 +82,7 @@ inline void calc_sharr_deriv(const cv::Mat &src, cv::Mat &dst)
 
         // do vertical convolution
         x = 0;
-// #if CV_SIMD128
+        // #if CV_SIMD128
         if (haveSIMD)
         {
             for (; x <= colsn - 8; x += 8)
@@ -98,7 +98,7 @@ inline void calc_sharr_deriv(const cv::Mat &src, cv::Mat &dst)
                 v_store(trow1 + x, t1);
             }
         }
-// #endif
+        // #endif
 
         for (; x < colsn; x++)
         {
@@ -120,7 +120,7 @@ inline void calc_sharr_deriv(const cv::Mat &src, cv::Mat &dst)
 
         // do horizontal convolution, interleave the results and store them to dst
         x = 0;
-// #if CV_SIMD128
+        // #if CV_SIMD128
         if (haveSIMD)
         {
             for (; x <= colsn - 8; x += 8)
@@ -137,7 +137,7 @@ inline void calc_sharr_deriv(const cv::Mat &src, cv::Mat &dst)
                 v_store_interleave((drow + x * 2), t0, t1);
             }
         }
-// #endif
+        // #endif
         for (; x < colsn; x++)
         {
             deriv_type t0 = (deriv_type)(trow0[x + cn] - trow0[x - cn]);
@@ -236,14 +236,14 @@ inline void calculate_LK_optical_flow(const cv::Range &range, const Mat *prevImg
         acctype iA11 = 0, iA12 = 0, iA22 = 0;
         float A11, A12, A22;
 
-// #if CV_SSE2
+        // #if CV_SSE2
         __m128i qw0 = _mm_set1_epi32(iw00 + (iw01 << 16));
         __m128i qw1 = _mm_set1_epi32(iw10 + (iw11 << 16));
         __m128i z = _mm_setzero_si128();
         __m128i qdelta_d = _mm_set1_epi32(1 << (W_BITS1 - 1));
         __m128i qdelta = _mm_set1_epi32(1 << (W_BITS1 - 5 - 1));
         __m128 qA11 = _mm_setzero_ps(), qA12 = _mm_setzero_ps(), qA22 = _mm_setzero_ps();
-// #endif
+        // #endif
 
         // extract the patch from the first image, compute covariation matrix of derivatives
         int x, y;
@@ -437,7 +437,7 @@ inline void calculate_LK_optical_flow(const cv::Range &range, const Mat *prevImg
 
             Point2f delta((float)((A12 * b2 - A22 * b1) * D),
                           (float)((A12 * b1 - A11 * b2) * D));
-            //delta = -delta;
+            // delta = -delta;
 
             nextPt += delta;
             nextPts[ptidx] = nextPt + halfWin;
@@ -519,14 +519,14 @@ inline int opencv_buildOpticalFlowPyramid(InputArray _img, OutputArrayOfArrays p
     Mat img = _img.getMat();
     CV_Assert(img.depth() == CV_8U && winSize.width > 2 && winSize.height > 2);
     int pyrstep = withDerivatives ? 2 : 1;
-#if (CV_MAJOR_VERSION==4)
+#if (CV_MAJOR_VERSION == 4)
     pyramid.create(1, (maxLevel + 1) * pyrstep, 0 /*type*/, -1, true);
 #else
     pyramid.create(1, (maxLevel + 1) * pyrstep, 0 /*type*/, -1, true, 0);
 #endif
     int derivType = CV_MAKETYPE(DataType<deriv_type>::depth, img.channels() * 2);
 
-    //level 0
+    // level 0
     bool lvl0IsSet = false;
     if (tryReuseInputImage && img.isSubmatrix() && (pyrBorder & BORDER_ISOLATED) == 0)
     {
@@ -604,10 +604,10 @@ inline int opencv_buildOpticalFlowPyramid(InputArray _img, OutputArrayOfArrays p
         sz = Size((sz.width + 1) / 2, (sz.height + 1) / 2);
         if (sz.width <= winSize.width || sz.height <= winSize.height)
         {
-#if (CV_MAJOR_VERSION==4)
-            pyramid.create(1, (level + 1) * pyrstep, 0 /*type*/, -1, true); //check this
-#else 
-            pyramid.create(1, (level + 1) * pyrstep, 0 /*type*/, -1, true, 0); //check this
+#if (CV_MAJOR_VERSION == 4)
+            pyramid.create(1, (level + 1) * pyrstep, 0 /*type*/, -1, true); // check this
+#else
+            pyramid.create(1, (level + 1) * pyrstep, 0 /*type*/, -1, true, 0); // check this
 #endif
             return level;
         }
@@ -790,7 +790,8 @@ int LK_optical_flow_kernel::track_image(const cv::Mat &curr_img, const std::vect
     }
 
     cv::parallel_for_(
-        Range(0, last_tracked_pts.size()), [&](const Range &range) {
+        Range(0, last_tracked_pts.size()), [&](const Range &range)
+        {
           //   cout << "Range " << range.start << ", " << range.end << endl;
           for (int level = m_maxLevel; level >= 0; level--) {
             calculate_LK_optical_flow(
@@ -799,8 +800,7 @@ int LK_optical_flow_kernel::track_image(const cv::Mat &curr_img, const std::vect
                 curr_tracked_pts.data(), status.data(), 0, m_lk_win_size,
                 m_terminate_criteria, level, m_maxLevel, flags,
                 minEigThreshold);
-          }
-        });
+          } });
 
     swap_image_buffer();
 

@@ -8,11 +8,13 @@
 
 #define eps_value 1e-6
 
-struct PlaneType{
+struct PlaneType
+{
     Eigen::Vector3d p[4];
 };
 
-class FOV_Checker{
+class FOV_Checker
+{
 public:
     FOV_Checker();
     ~FOV_Checker();
@@ -21,13 +23,12 @@ public:
     void check_fov(Eigen::Vector3d cur_pose, Eigen::Vector3d axis, double theta, double depth, vector<BoxPointType> &boxes);
     bool check_box(Eigen::Vector3d cur_pose, Eigen::Vector3d axis, double theta, double depth, const BoxPointType box);
     bool check_line(Eigen::Vector3d cur_pose, Eigen::Vector3d axis, double theta, double depth, Eigen::Vector3d line_p, Eigen::Vector3d line_vec);
-    bool check_surface(Eigen::Vector3d cur_pose, Eigen::Vector3d axis,  double theta, double depth, PlaneType plane);
+    bool check_surface(Eigen::Vector3d cur_pose, Eigen::Vector3d axis, double theta, double depth, PlaneType plane);
     bool check_point(Eigen::Vector3d cur_pose, Eigen::Vector3d axis, double theta, double depth, Eigen::Vector3d point);
-    bool check_box_in_env(BoxPointType box);    
+    bool check_box_in_env(BoxPointType box);
+
 private:
     BoxPointType env;
     double box_length;
     FILE *fp;
-
 };
-
