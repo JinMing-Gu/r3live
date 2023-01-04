@@ -233,6 +233,8 @@ void horizon_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
             pl_full[i].z = msg->points[i].z;
             pl_full[i].intensity = msg->points[i].reflectivity;
 
+            // msg->points[i].offset_time, 单位: 纳秒
+            // pl_full[i].curvature, 单位: 毫秒
             pl_full[i].curvature = msg->points[i].offset_time / float(1000000); // use curvature as time of each laser points
 
             if ((std::abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) || (std::abs(pl_full[i].y - pl_full[i - 1].y) > 1e-7) ||

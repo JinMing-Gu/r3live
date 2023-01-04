@@ -1,7 +1,8 @@
 #ifndef COMMON_LIB_H
 #define COMMON_LIB_H
 
-#include <so3_math.h>
+#include <queue>
+#include <deque>
 #include <Eigen/Eigen>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
@@ -11,55 +12,51 @@
 #include <sensor_msgs/PointCloud.h>
 #include <nav_msgs/Odometry.h>
 #include <rosbag/bag.h>
-
 #include <tf/transform_broadcaster.h>
 #include <eigen_conversions/eigen_msg.h>
+
+#include "so3_math.h"
 #include "tools_color_printf.hpp"
 #include "tools_eigen.hpp"
 #include "tools_ros.hpp"
-#include <queue>
-#include <deque>
 #include "lib_sophus/se3.hpp"
 #include "lib_sophus/so3.hpp"
-// #define DEBUG_PRINT
+
 #define USE_ikdtree
 #define ESTIMATE_GRAVITY 1
 #define ENABLE_CAMERA_OBS 1
-// #define USE_FOV_Checker
-
 #define printf_line std::cout << __FILE__ << " " << __LINE__ << std::endl;
-
 #define PI_M (3.14159265358)
 #define G_m_s2 (9.81) // Gravity const in Hong Kong SAR, China
-#if ENABLE_CAMERA_OBS
-#define DIM_OF_STATES (29) // with vio obs
-#else
-#define DIM_OF_STATES (18) // For faster speed.
-#endif
-#define DIM_OF_PROC_N (12) // Dimension of process noise (Let Dim(SO(3)) = 3)
 #define CUBE_LEN (6.0)
 #define LIDAR_SP_LEN (2)
 #define INIT_COV (0.0001)
-
 #define VEC_FROM_ARRAY(v) v[0], v[1], v[2]
 #define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]
 #define CONSTRAIN(v, min, max) ((v > min) ? ((v < max) ? v : max) : min)
 #define ARRAY_FROM_EIGEN(mat) mat.data(), mat.data() + mat.rows() * mat.cols()
 #define STD_VEC_FROM_EIGEN(mat) std::vector<decltype(mat)::Scalar>(mat.data(), mat.data() + mat.rows() * mat.cols())
-
 #define DEBUG_FILE_DIR(name) (std::string(std::string(ROOT_DIR) + "Log/" + name))
-// using vins_estimator = fast_lio;
+
+#if ENABLE_CAMERA_OBS
+#define DIM_OF_STATES (29) // with vio obs
+#else
+#define DIM_OF_STATES (18) // For faster speed.
+#endif
+
+#define DIM_OF_PROC_N (12) // Dimension of process noise (Let Dim(SO(3)) = 3)
 
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZINormal;
-
 static const Eigen::Matrix3d Eye3d(Eigen::Matrix3d::Identity());
 static const Eigen::Matrix3f Eye3f(Eigen::Matrix3f::Identity());
 static const Eigen::Vector3d Zero3d(0, 0, 0);
 static const Eigen::Vector3f Zero3f(0, 0, 0);
-// Eigen::Vector3d Lidar_offset_to_IMU(0.05512, 0.02226, 0.0297); // Horizon
+
+// Eigen::Vector3d Lidar_offset_to_IMU(0.05512, 0.02226, 0.0297); // Horizon // TODO 外参直接写到了代码里?
 static const Eigen::Vector3d Lidar_offset_to_IMU(0.04165, 0.02326, -0.0284); // Avia
 
+// 6自由度位姿, 偏移时间, 3轴加速度, 3轴角速度, 3维重力加速度封装在结构体Pose6D中
 struct Pose6D
 {
     typedef double data_type;
@@ -71,6 +68,7 @@ struct Pose6D
     data_type gyr[3];
 };
 
+// 计算向量的反对称矩阵
 template <typename T = double>
 inline Eigen::Matrix<T, 3, 3> vec_to_hat(Eigen::Matrix<T, 3, 1> &omega)
 {
@@ -85,12 +83,14 @@ inline Eigen::Matrix<T, 3, 3> vec_to_hat(Eigen::Matrix<T, 3, 1> &omega)
     return res_mat_33;
 }
 
+// 计算角度的反正切
 template <typename T = double>
 T cot(const T theta)
 {
     return 1.0 / std::tan(theta);
 }
 
+// 旋转矩阵的右雅克比
 template <typename T = double>
 inline Eigen::Matrix<T, 3, 3> right_jacobian_of_rotion_matrix(const Eigen::Matrix<T, 3, 1> &omega)
 {
@@ -108,6 +108,7 @@ inline Eigen::Matrix<T, 3, 3> right_jacobian_of_rotion_matrix(const Eigen::Matri
     return res_mat_33;
 }
 
+// 旋转矩阵的右雅克比逆
 template <typename T = double>
 Eigen::Matrix<T, 3, 3> inverse_right_jacobian_of_rotion_matrix(const Eigen::Matrix<T, 3, 1> &omega)
 {
@@ -125,42 +126,39 @@ Eigen::Matrix<T, 3, 3> inverse_right_jacobian_of_rotion_matrix(const Eigen::Matr
     return res_mat_33;
 }
 
+// 保存LiDAR数据队列
+// 保存LiDAR, IMU, Camera的时间戳, 用于控制各传感器数据队列的对齐
 struct Camera_Lidar_queue
 {
-    double m_first_imu_time = -3e88;
-    double m_sliding_window_tim = 10000;
-    double m_last_imu_time = -3e88;
-    double m_last_visual_time = -3e88;
-    double m_last_lidar_time = -3e88;
-    double m_visual_init_time = 3e88;
-    double m_lidar_drag_cam_tim = 5.0;
-    double m_if_lidar_start_first = 1;
-    double m_camera_imu_td = 0;
+    double m_first_imu_time = -3e88;   // 存在外部使用
+    double m_last_imu_time = -3e88;    // 
+    double m_last_visual_time = -3e88; // 存在外部使用
+    double m_last_lidar_time = -3e88;  // 
+    int m_if_have_lidar_data = 0;      // 存在外部使用
+    int m_if_have_camera_data = 0;     // 存在外部使用
+    Eigen::Vector3d g_noise_cov_acc;   // 存在外部使用
+    Eigen::Vector3d g_noise_cov_gyro;  // 存在外部使用
+    int m_if_dump_log = 1;             // 存在外部使用
+    int m_if_acc_mul_G = 0;            // 存在外部使用, 标志位, 控制是否将加速度计数据的单位从g转换为m/s^2
 
-    int m_if_acc_mul_G = 0;
-
-    int m_if_have_lidar_data = 0;
-    int m_if_have_camera_data = 0;
-    int m_if_lidar_can_start = 1;
-    Eigen::Vector3d g_noise_cov_acc;
-    Eigen::Vector3d g_noise_cov_gyro;
-
-    std::string m_bag_file_name;
-    int m_if_dump_log = 1;
+    double m_visual_init_time = 3e88;    // 无用
+    double m_lidar_drag_cam_tim = 5.0;   // 无用
+    double m_if_lidar_start_first = 1;   // 无用
+    double m_sliding_window_tim = 10000; // 好像无用
+    double m_camera_imu_td = 0;          // 好像无用
+    int m_if_lidar_can_start = 1;        // 无用
+    std::string m_bag_file_name;         // 无用
 
     // std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>> *m_camera_frame_buf = nullptr;
-    std::deque<sensor_msgs::PointCloud2::ConstPtr> *m_liar_frame_buf = nullptr;
+    std::deque<sensor_msgs::PointCloud2::ConstPtr> *m_liar_frame_buf = nullptr; // LiDAR数据队列
 
-    double time_wrt_first_imu_time(double &time)
-    {
-        return time - m_first_imu_time;
-    }
-
+    // 构造函数
     Camera_Lidar_queue()
     {
         m_if_have_lidar_data = 0;
         m_if_have_camera_data = 0;
     };
+    // 析构函数
     ~Camera_Lidar_queue(){};
 
     double imu_in(const double in_time)
@@ -191,6 +189,7 @@ struct Camera_Lidar_queue
         return 1;
     }
 
+    // 无用
     int camera_in(const double &in_time)
     {
         if (in_time < m_last_imu_time - m_sliding_window_tim)
@@ -250,14 +249,6 @@ struct Camera_Lidar_queue
         return false;
     }
 
-    void display_last_cam_LiDAR_time()
-    {
-        double cam_last_time = get_camera_front_time();
-        double lidar_last_time = get_lidar_front_time();
-        scope_color(ANSI_COLOR_GREEN_BOLD);
-        cout << std::setprecision(15) << "Camera time = " << cam_last_time << ", LiDAR last time =  " << lidar_last_time << endl;
-    }
-
     bool if_lidar_can_process()
     {
         // m_if_have_lidar_data = 1;
@@ -288,18 +279,34 @@ struct Camera_Lidar_queue
         }
         return false;
     }
+
+    // 无用
+    double time_wrt_first_imu_time(double &time)
+    {
+        return time - m_first_imu_time;
+    }
+    
+    // 无用
+    void display_last_cam_LiDAR_time()
+    {
+        double cam_last_time = get_camera_front_time();
+        double lidar_last_time = get_lidar_front_time();
+        scope_color(ANSI_COLOR_GREEN_BOLD);
+        cout << std::setprecision(15) << "Camera time = " << cam_last_time << ", LiDAR last time =  " << lidar_last_time << endl;
+    }
 };
 
-struct MeasureGroup // Lidar data and imu dates for the curent process
+// 当前处理的LiDAR帧与对应的若干帧IMU数据封装在结构体MeasureGroup中
+struct MeasureGroup
 {
     MeasureGroup()
     {
         this->lidar.reset(new PointCloudXYZINormal());
     };
-    double lidar_beg_time;
-    double lidar_end_time;
-    PointCloudXYZINormal::Ptr lidar;
-    std::deque<sensor_msgs::Imu::ConstPtr> imu;
+    double lidar_beg_time; // 当前处理的LiDAR帧中第1个点的时间戳, 当前处理的LiDAR帧时间戳
+    double lidar_end_time; // 当前处理的LiDAR帧中最后1个点的时间戳
+    PointCloudXYZINormal::Ptr lidar; // 当前处理的LiDAR帧
+    std::deque<sensor_msgs::Imu::ConstPtr> imu; // 当前处理的若干帧IMU数据
 };
 
 struct StatesGroup
@@ -308,20 +315,23 @@ struct StatesGroup
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    Eigen::Matrix3d rot_end; // [0-2] the estimated attitude (rotation matrix) at the end lidar point
-    Eigen::Vector3d pos_end; // [3-5] the estimated position at the end lidar point (world frame)
-    Eigen::Vector3d vel_end; // [6-8] the estimated velocity at the end lidar point (world frame)
-    Eigen::Vector3d bias_g;  // [9-11] gyroscope bias
-    Eigen::Vector3d bias_a;  // [12-14] accelerator bias
-    Eigen::Vector3d gravity; // [15-17] the estimated gravity acceleration
+    // 29维的状态向量
+    Eigen::Matrix3d rot_end;     // [0-2] the estimated attitude (rotation matrix) at the end lidar point
+    Eigen::Vector3d pos_end;     // [3-5] the estimated position at the end lidar point (world frame)
+    Eigen::Vector3d vel_end;     // [6-8] the estimated velocity at the end lidar point (world frame)
+    Eigen::Vector3d bias_g;      // [9-11] gyroscope bias
+    Eigen::Vector3d bias_a;      // [12-14] accelerator bias
+    Eigen::Vector3d gravity;     // [15-17] the estimated gravity acceleration
+    Eigen::Matrix3d rot_ext_i2c; // [18-20] Extrinsic between IMU frame to Camera frame on rotation. IMU坐标系到Camera坐标系的基变换矩阵
+    Eigen::Vector3d pos_ext_i2c; // [21-23] Extrinsic between IMU frame to Camera frame on position. 在IMU坐标系下取的IMU-Camera平移
+    double td_ext_i2c_delta;     // [24]    Extrinsic between IMU frame to Camera frame on time-offset. IMU与Camera之间的时间偏移
+    vec_4 cam_intrinsic;         // [25-28] Intrinsice of camera [fx, fy, cx, cy]
 
-    Eigen::Matrix3d rot_ext_i2c;                             // [18-20] Extrinsic between IMU frame to Camera frame on rotation.
-    Eigen::Vector3d pos_ext_i2c;                             // [21-23] Extrinsic between IMU frame to Camera frame on position.
-    double td_ext_i2c_delta;                                 // [24]    Extrinsic between IMU frame to Camera frame on position.
-    vec_4 cam_intrinsic;                                     // [25-28] Intrinsice of camera [fx, fy, cx, cy]
-    Eigen::Matrix<double, DIM_OF_STATES, DIM_OF_STATES> cov; // states covariance
+    Eigen::Matrix<double, DIM_OF_STATES, DIM_OF_STATES> cov; // states covariance. 状态向量的协方差矩阵
     double last_update_time = 0;
     double td_ext_i2c;
+
+    // 状态向量构造函数, 初始化状态向量
     StatesGroup()
     {
         rot_end = Eigen::Matrix3d::Identity();
@@ -331,20 +341,20 @@ public:
         bias_a = vec_3::Zero();
         gravity = Eigen::Vector3d(0.0, 0.0, 9.805);
         // gravity = Eigen::Vector3d(0.0, 9.805, 0.0);
-
-        // Ext camera w.r.t. IMU
         rot_ext_i2c = Eigen::Matrix3d::Identity();
         pos_ext_i2c = vec_3::Zero();
+        td_ext_i2c_delta = 0;
 
         cov = Eigen::Matrix<double, DIM_OF_STATES, DIM_OF_STATES>::Identity() * INIT_COV;
         // cov.block(18, 18, 6,6) *= 0.1;
         last_update_time = 0;
-        td_ext_i2c_delta = 0;
         td_ext_i2c = 0;
     }
 
+    // 状态向量析构函数
     ~StatesGroup() {}
 
+    // 定义状态向量的"+"法
     StatesGroup operator+(const Eigen::Matrix<double, DIM_OF_STATES, 1> &state_add)
     {
         StatesGroup a = *this;
@@ -357,11 +367,9 @@ public:
 #if ESTIMATE_GRAVITY
         a.gravity = this->gravity + state_add.block<3, 1>(15, 0);
 #endif
-
         a.cov = this->cov;
         a.last_update_time = this->last_update_time;
 #if ENABLE_CAMERA_OBS
-        // Ext camera w.r.t. IMU
         a.rot_ext_i2c = this->rot_ext_i2c * Exp(state_add(18), state_add(19), state_add(20));
         a.pos_ext_i2c = this->pos_ext_i2c + state_add.block<3, 1>(21, 0);
         a.td_ext_i2c_delta = this->td_ext_i2c_delta + state_add(24);
@@ -370,6 +378,7 @@ public:
         return a;
     }
 
+    // 定义状态向量的"+="法
     StatesGroup &operator+=(const Eigen::Matrix<double, DIM_OF_STATES, 1> &state_add)
     {
         this->rot_end = this->rot_end * Exp(state_add(0, 0), state_add(1, 0), state_add(2, 0));
@@ -381,7 +390,6 @@ public:
         this->gravity += state_add.block<3, 1>(15, 0);
 #endif
 #if ENABLE_CAMERA_OBS
-        // Ext camera w.r.t. IMU
         this->rot_ext_i2c = this->rot_ext_i2c * Exp(state_add(18), state_add(19), state_add(20));
         this->pos_ext_i2c = this->pos_ext_i2c + state_add.block<3, 1>(21, 0);
         this->td_ext_i2c_delta = this->td_ext_i2c_delta + state_add(24);
@@ -390,6 +398,7 @@ public:
         return *this;
     }
 
+    // 定义状态向量的"-"法
     Eigen::Matrix<double, DIM_OF_STATES, 1> operator-(const StatesGroup &b)
     {
         Eigen::Matrix<double, DIM_OF_STATES, 1> a;
@@ -400,9 +409,7 @@ public:
         a.block<3, 1>(9, 0) = this->bias_g - b.bias_g;
         a.block<3, 1>(12, 0) = this->bias_a - b.bias_a;
         a.block<3, 1>(15, 0) = this->gravity - b.gravity;
-
 #if ENABLE_CAMERA_OBS
-        // Ext camera w.r.t. IMU
         Eigen::Matrix3d rotd_ext_i2c(b.rot_ext_i2c.transpose() * this->rot_ext_i2c);
         a.block<3, 1>(18, 0) = SO3_LOG(rotd_ext_i2c);
         a.block<3, 1>(21, 0) = this->pos_ext_i2c - b.pos_ext_i2c;
@@ -412,6 +419,7 @@ public:
         return a;
     }
 
+    // 在终端打印状态向量
     static void display(const StatesGroup &state, std::string str = std::string("State: "))
     {
         vec_3 angle_axis = SO3_LOG(state.rot_end) * 57.3;
@@ -425,18 +433,21 @@ public:
     }
 };
 
+// 弧度转角度
 template <typename T>
 T rad2deg(T radians)
 {
     return radians * 180.0 / PI_M;
 }
 
+// 角度转弧度
 template <typename T>
 T deg2rad(T degrees)
 {
     return degrees * PI_M / 180.0;
 }
 
+// 将若干数据封装为Pose6D变量
 template <typename T>
 auto set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::Matrix<T, 3, 1> &g,
                 const Eigen::Matrix<T, 3, 1> &v, const Eigen::Matrix<T, 3, 1> &p, const Eigen::Matrix<T, 3, 3> &R)
@@ -453,7 +464,7 @@ auto set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::Ma
             rot_kp.rot[i * 3 + j] = R(i, j);
     }
     // Eigen::Map<Eigen::Matrix3d>(rot_kp.rot, 3,3) = R;
-    return std::move(rot_kp);
+    return std::move(rot_kp); // 将左值转换为右值引用
 }
 
 #endif
