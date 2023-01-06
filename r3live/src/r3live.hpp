@@ -135,7 +135,7 @@ public:
     double m_maximum_pt_kdtree_dis = 1.0;
     double m_maximum_res_dis = 1.0;
     double m_planar_check_dis = 0.05;
-    double m_lidar_imu_time_delay = 0;
+    double m_lidar_imu_time_delay = 0; //! m_lidar_imu_time_delay
     double m_long_rang_pt_dis = 500.0;
     bool m_if_publish_feature_map = false;
     int iterCount = 0;

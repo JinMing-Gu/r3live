@@ -51,7 +51,7 @@ void R3LIVE::imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 {
     sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
     double timestamp = msg->header.stamp.toSec();
-    g_camera_lidar_queue.imu_in(timestamp);
+    g_camera_lidar_queue.imu_in(timestamp); // 好像无用
     mtx_buffer.lock();
     if (timestamp < last_timestamp_imu)
     {
@@ -63,6 +63,7 @@ void R3LIVE::imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 
     last_timestamp_imu = timestamp;
 
+    // 控制是否将加速度计数据的单位从g转换为m/s^2
     if (g_camera_lidar_queue.m_if_acc_mul_G)
     {
         msg->linear_acceleration.x *= G_m_s2;
@@ -462,7 +463,7 @@ void R3LIVE::feat_points_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg_in)
 {
     sensor_msgs::PointCloud2::Ptr msg(new sensor_msgs::PointCloud2(*msg_in));
     msg->header.stamp = ros::Time(msg_in->header.stamp.toSec() - m_lidar_imu_time_delay);
-    if (g_camera_lidar_queue.lidar_in(msg_in->header.stamp.toSec() + 0.1) == 0)
+    if (g_camera_lidar_queue.lidar_in(msg_in->header.stamp.toSec() + 0.1) == 0) // 将m_if_have_lidar_data置为true //? 为什么要加0.1
     {
         return;
     }
@@ -532,6 +533,7 @@ int R3LIVE::service_LIO_update()
             break;
         ros::spinOnce();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // 等到当前LiDAR数据之前的Camera数据全都处理完, 才可以开始处理LiDAR数据, 若返回false, 则sleep一会
         while (g_camera_lidar_queue.if_lidar_can_process() == false)
         {
             ros::spinOnce();
@@ -963,6 +965,7 @@ int R3LIVE::service_LIO_update()
                 pubLaserCloudFullRes.publish(laserCloudFullRes3);
             }
 
+            // 如果有Camera数据, 或者LiDAR帧数小于100, 则可以将点云添加到全局地图中
             if (g_camera_lidar_queue.m_if_have_camera_data || (g_LiDAR_frame_index < 100)) // append point cloud to global map.
             {
                 static std::vector<double> stastic_cost_time;

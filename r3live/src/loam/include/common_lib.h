@@ -95,6 +95,7 @@ template <typename T = double>
 inline Eigen::Matrix<T, 3, 3> right_jacobian_of_rotion_matrix(const Eigen::Matrix<T, 3, 1> &omega)
 {
     // Barfoot, Timothy D, State estimation for robotics. Page 232-237
+    // 机器人学中的状态估计, 203页, 公式7.77a
     Eigen::Matrix<T, 3, 3> res_mat_33;
 
     T theta = omega.norm();
@@ -113,6 +114,7 @@ template <typename T = double>
 Eigen::Matrix<T, 3, 3> inverse_right_jacobian_of_rotion_matrix(const Eigen::Matrix<T, 3, 1> &omega)
 {
     // Barfoot, Timothy D, State estimation for robotics. Page 232-237
+    // 机器人学中的状态估计, 203页, 公式7.76a
     Eigen::Matrix<T, 3, 3> res_mat_33;
 
     T theta = omega.norm();
@@ -130,24 +132,25 @@ Eigen::Matrix<T, 3, 3> inverse_right_jacobian_of_rotion_matrix(const Eigen::Matr
 // 保存LiDAR, IMU, Camera的时间戳, 用于控制各传感器数据队列的对齐
 struct Camera_Lidar_queue
 {
-    double m_first_imu_time = -3e88;   // 存在外部使用
-    double m_last_imu_time = -3e88;    // 
-    double m_last_visual_time = -3e88; // 存在外部使用
-    double m_last_lidar_time = -3e88;  // 
-    int m_if_have_lidar_data = 0;      // 存在外部使用
-    int m_if_have_camera_data = 0;     // 存在外部使用
-    Eigen::Vector3d g_noise_cov_acc;   // 存在外部使用
-    Eigen::Vector3d g_noise_cov_gyro;  // 存在外部使用
-    int m_if_dump_log = 1;             // 存在外部使用
-    int m_if_acc_mul_G = 0;            // 存在外部使用, 标志位, 控制是否将加速度计数据的单位从g转换为m/s^2
+    double m_first_imu_time = -3e88;   // 第1帧IMU数据时间戳, 第1帧IMU数据进来后赋值, 之后保持不变
+    double m_last_imu_time = -3e88;    // 距当前最近的IMU帧时间戳, 最后的/最新的IMU帧时间戳
+    double m_last_visual_time = -3e88; // 距当前最近的Camera帧时间戳, 最后的/最新的Camera帧时间戳
+    double m_last_lidar_time = -3e88;  // 距当前最近的LiDAR帧时间戳, 最后的/最新的LiDAR帧时间戳
+    int m_if_have_lidar_data = 0;      // 标志位, 表示当前是否有还未处理的LiDAR数据
+    int m_if_have_camera_data = 0;     // 标志位, 表示当前是否有还未处理的Camera数据
+    Eigen::Vector3d g_noise_cov_acc;   // 加速度计数据噪声的协方差矩阵
+    Eigen::Vector3d g_noise_cov_gyro;  // 陀螺仪数据噪声的协方差矩阵
+    int m_if_dump_log = 1;             // 标志位, 控制是否打印log
+    int m_if_acc_mul_G = 0;            // 标志位, 控制是否将加速度计数据的单位从g转换为m/s^2
 
-    double m_visual_init_time = 3e88;    // 无用
-    double m_lidar_drag_cam_tim = 5.0;   // 无用
-    double m_if_lidar_start_first = 1;   // 无用
     double m_sliding_window_tim = 10000; // 好像无用
-    double m_camera_imu_td = 0;          // 好像无用
-    int m_if_lidar_can_start = 1;        // 无用
-    std::string m_bag_file_name;         // 无用
+    double m_camera_imu_td = 0;          // 好像无用, 实际使用的Camera与IMU之间的时间偏移为td_ext_i2c //! m_camera_imu_td
+
+    double m_visual_init_time = 3e88;  // 无用
+    double m_lidar_drag_cam_tim = 5.0; // 无用
+    double m_if_lidar_start_first = 1; // 无用
+    int m_if_lidar_can_start = 1;      // 无用
+    std::string m_bag_file_name;       // 无用
 
     // std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>> *m_camera_frame_buf = nullptr;
     std::deque<sensor_msgs::PointCloud2::ConstPtr> *m_liar_frame_buf = nullptr; // LiDAR数据队列
@@ -161,26 +164,29 @@ struct Camera_Lidar_queue
     // 析构函数
     ~Camera_Lidar_queue(){};
 
+    // 更新m_first_imu_time与m_last_imu_time
     double imu_in(const double in_time)
     {
         if (m_first_imu_time < 0)
         {
-            m_first_imu_time = in_time;
+            m_first_imu_time = in_time; // 只执行1次, 第1帧IMU数据进来后赋值, 之后保持不变
         }
+        // 更新m_last_imu_time, 使其始终为距当前最近的IMU帧时间戳, 最后的/最新的IMU帧时间戳
         m_last_imu_time = std::max(in_time, m_last_imu_time);
         // m_last_imu_time = in_time;
         return m_last_imu_time;
     }
 
+    // 将m_if_have_lidar_data置为true
     int lidar_in(const double &in_time)
     {
         // cout << "LIDAR in " << endl;
         if (m_if_have_lidar_data == 0)
         {
-            m_if_have_lidar_data = 1;
+            m_if_have_lidar_data = 1; // 只执行1次, 第1帧LiDAR数据进来后将m_if_have_lidar_data置为true, 之后保持不变
             // cout << ANSI_COLOR_BLUE_BOLD << "Have LiDAR data" << endl;
         }
-        if (in_time < m_last_imu_time - m_sliding_window_tim)
+        if (in_time < m_last_imu_time - m_sliding_window_tim) // 好像无用
         {
             std::cout << ANSI_COLOR_RED_BOLD << "LiDAR incoming frame too old, need to be drop!!!" << ANSI_COLOR_RESET << std::endl;
             // TODO: Drop LiDAR frame
@@ -204,6 +210,8 @@ struct Camera_Lidar_queue
     {
         if (m_liar_frame_buf != nullptr && m_liar_frame_buf->size())
         {
+            // 更新m_last_lidar_time, 使其始终为距当前最近的LiDAR帧时间戳, 最后的/最新的LiDAR帧时间戳
+            //? 为什么要加0.1
             m_last_lidar_time = m_liar_frame_buf->front()->header.stamp.toSec() + 0.1;
             return m_last_lidar_time;
         }
@@ -215,9 +223,12 @@ struct Camera_Lidar_queue
 
     double get_camera_front_time()
     {
+        // 只是返回m_last_visual_time, 更新m_last_visual_time的步骤在其他位置
+        // m_camera_imu_td好像无用, 实际使用的Camera与IMU之间的时间偏移为td_ext_i2c
         return m_last_visual_time + m_camera_imu_td;
     }
 
+    // 控制是否可以处理Camera数据, 可以处理时返回true, 否则返回false
     bool if_camera_can_process()
     {
         m_if_have_camera_data = 1;
@@ -234,6 +245,7 @@ struct Camera_Lidar_queue
             return false;
         }
 
+        // 等到当前Camera数据之前的LiDAR数据全都处理完, 才可以开始处理Camera数据
         if (lidar_last_time <= cam_last_time)
         {
             // LiDAR data need process first.
@@ -249,6 +261,7 @@ struct Camera_Lidar_queue
         return false;
     }
 
+    // 控制是否可以处理LiDAR数据, 可以处理时返回true, 否则返回false
     bool if_lidar_can_process()
     {
         // m_if_have_lidar_data = 1;
@@ -265,6 +278,7 @@ struct Camera_Lidar_queue
             return false;
         }
 
+        // 等到当前LiDAR数据之前的Camera数据全都处理完, 才可以开始处理LiDAR数据
         if (lidar_last_time > cam_last_time)
         {
             // Camera data need process first.
@@ -285,7 +299,7 @@ struct Camera_Lidar_queue
     {
         return time - m_first_imu_time;
     }
-    
+
     // 无用
     void display_last_cam_LiDAR_time()
     {
@@ -303,9 +317,9 @@ struct MeasureGroup
     {
         this->lidar.reset(new PointCloudXYZINormal());
     };
-    double lidar_beg_time; // 当前处理的LiDAR帧中第1个点的时间戳, 当前处理的LiDAR帧时间戳
-    double lidar_end_time; // 当前处理的LiDAR帧中最后1个点的时间戳
-    PointCloudXYZINormal::Ptr lidar; // 当前处理的LiDAR帧
+    double lidar_beg_time;                      // 当前处理的LiDAR帧中第1个点的时间戳, 当前处理的LiDAR帧时间戳
+    double lidar_end_time;                      // 当前处理的LiDAR帧中最后1个点的时间戳
+    PointCloudXYZINormal::Ptr lidar;            // 当前处理的LiDAR帧
     std::deque<sensor_msgs::Imu::ConstPtr> imu; // 当前处理的若干帧IMU数据
 };
 
@@ -324,7 +338,7 @@ public:
     Eigen::Vector3d gravity;     // [15-17] the estimated gravity acceleration
     Eigen::Matrix3d rot_ext_i2c; // [18-20] Extrinsic between IMU frame to Camera frame on rotation. IMU坐标系到Camera坐标系的基变换矩阵
     Eigen::Vector3d pos_ext_i2c; // [21-23] Extrinsic between IMU frame to Camera frame on position. 在IMU坐标系下取的IMU-Camera平移
-    double td_ext_i2c_delta;     // [24]    Extrinsic between IMU frame to Camera frame on time-offset. IMU与Camera之间的时间偏移
+    double td_ext_i2c_delta;     // [24]    Extrinsic between IMU frame to Camera frame on time-offset. IMU与Camera之间的时间偏移 //! td_ext_i2c_delta
     vec_4 cam_intrinsic;         // [25-28] Intrinsice of camera [fx, fy, cx, cy]
 
     Eigen::Matrix<double, DIM_OF_STATES, DIM_OF_STATES> cov; // states covariance. 状态向量的协方差矩阵

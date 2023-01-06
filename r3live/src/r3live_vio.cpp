@@ -1098,6 +1098,7 @@ void R3LIVE::service_VIO_update()
     while (ros::ok())
     {
         cv_keyboard_callback();
+        // 如果有LiDAR数据, 才可以处理Camera数据, 或者说VIO部分不能单独运行
         while (g_camera_lidar_queue.m_if_have_lidar_data == 0)
         {
             ros::spinOnce();
@@ -1126,6 +1127,7 @@ void R3LIVE::service_VIO_update()
         double message_time = img_pose->m_timestamp;
         m_queue_image_with_pose.pop_front();
         m_camera_data_mutex.unlock();
+        // 更新m_last_visual_time, 使其始终为"距当前最近的Camera帧时间戳 + Camera与IMU之间的时间偏移", "最后的/最新的Camera帧时间戳 + Camera与IMU之间的时间偏移"
         g_camera_lidar_queue.m_last_visual_time = img_pose->m_timestamp + g_lio_state.td_ext_i2c;
 
         img_pose->set_frame_idx(g_camera_frame_idx);
@@ -1150,6 +1152,7 @@ void R3LIVE::service_VIO_update()
 
         g_camera_frame_idx++;
         tim.tic("Wait");
+        // 等到当前Camera数据之前的LiDAR数据全都处理完, 才可以开始处理Camera数据, 若返回false, 则sleep一会
         while (g_camera_lidar_queue.if_camera_can_process() == false)
         {
             ros::spinOnce();
