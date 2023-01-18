@@ -72,6 +72,7 @@ include_directories(
   ${PCL_INCLUDE_DIRS}
   ${livox_ros_driver_INCLUDE_DIRS}
   ./src
+  ./src/loam
   ./src/loam/include
   ./src/tools/
   ./src/rgb_map 

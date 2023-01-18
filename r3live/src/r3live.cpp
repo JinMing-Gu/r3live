@@ -76,7 +76,7 @@ Dr. Fu Zhang < fuzhang@hku.hk >.
 
 #include "r3live.hpp"
 
-#include "loam/IMU_Processing.hpp"
+#include "IMU_Processing.hpp"
 #include "tools_logger.hpp"
 #include "tools_color_printf.hpp"
 #include "tools_eigen.hpp"
