@@ -1,16 +1,16 @@
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <livox_ros_driver/CustomMsg.h>
-#include "../tools/tools_logger.hpp"
+
+#include "livox_ros_driver/CustomMsg.h"
+
+#include "tools_logger.hpp"
 
 using namespace std;
 
 #define IS_VALID(a) ((abs(a) > 1e8) ? true : false)
 
 typedef pcl::PointXYZINormal PointType;
-
-ros::Publisher pub_full, pub_surf, pub_corn;
 
 enum LID_TYPE
 {
@@ -62,8 +62,8 @@ struct orgtype
     }
 };
 
+ros::Publisher pub_full, pub_surf, pub_corn;
 const double rad2deg = 180 * M_1_PI;
-
 int lidar_type;
 double blind, inf_bound;
 int N_SCANS;
@@ -78,6 +78,7 @@ double smallp_intersect, smallp_ratio;
 int point_filter_num;
 int g_if_using_raw_point = 1;
 int g_LiDAR_sampling_point_step = 3;
+
 void mid_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
 void horizon_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
 void velo16_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);

@@ -3,9 +3,9 @@
 
 #include <queue>
 #include <deque>
+
 #include <Eigen/Eigen>
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
+
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -15,12 +15,15 @@
 #include <tf/transform_broadcaster.h>
 #include <eigen_conversions/eigen_msg.h>
 
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+
+#include "lib_sophus/se3.hpp"
+#include "lib_sophus/so3.hpp"
 #include "so3_math.h"
 #include "tools_color_printf.hpp"
 #include "tools_eigen.hpp"
 #include "tools_ros.hpp"
-#include "lib_sophus/se3.hpp"
-#include "lib_sophus/so3.hpp"
 
 #define USE_ikdtree
 #define ESTIMATE_GRAVITY 1
@@ -38,21 +41,23 @@
 #define STD_VEC_FROM_EIGEN(mat) std::vector<decltype(mat)::Scalar>(mat.data(), mat.data() + mat.rows() * mat.cols())
 #define DEBUG_FILE_DIR(name) (std::string(std::string(ROOT_DIR) + "Log/" + name))
 
+// 18维: R p v bg ba g
+// 24维: R p v bg ba g R_ic p_ic
+// 29维: R p v bg ba g R_ic p_ic t fx fy cx cy
 #if ENABLE_CAMERA_OBS
 #define DIM_OF_STATES (29) // with vio obs
 #else
 #define DIM_OF_STATES (18) // For faster speed.
 #endif
-
 #define DIM_OF_PROC_N (12) // Dimension of process noise (Let Dim(SO(3)) = 3)
 
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZINormal;
+
 static const Eigen::Matrix3d Eye3d(Eigen::Matrix3d::Identity());
 static const Eigen::Matrix3f Eye3f(Eigen::Matrix3f::Identity());
 static const Eigen::Vector3d Zero3d(0, 0, 0);
 static const Eigen::Vector3f Zero3f(0, 0, 0);
-
 // Eigen::Vector3d Lidar_offset_to_IMU(0.05512, 0.02226, 0.0297); // Horizon // TODO 外参直接写到了代码里?
 static const Eigen::Vector3d Lidar_offset_to_IMU(0.04165, 0.02326, -0.0284); // Avia
 

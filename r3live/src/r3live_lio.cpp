@@ -1,52 +1,6 @@
-/*
-This code is the implementation of our paper "R3LIVE: A Robust, Real-time, RGB-colored,
-LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package".
-
-Author: Jiarong Lin   < ziv.lin.ljr@gmail.com >
-
-If you use any code of this repo in your academic research, please cite at least
-one of our papers:
-[1] Lin, Jiarong, and Fu Zhang. "R3LIVE: A Robust, Real-time, RGB-colored,
-    LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package."
-[2] Xu, Wei, et al. "Fast-lio2: Fast direct lidar-inertial odometry."
-[3] Lin, Jiarong, et al. "R2LIVE: A Robust, Real-time, LiDAR-Inertial-Visual
-     tightly-coupled state Estimator and mapping."
-[4] Xu, Wei, and Fu Zhang. "Fast-lio: A fast, robust lidar-inertial odometry
-    package by tightly-coupled iterated kalman filter."
-[5] Cai, Yixi, Wei Xu, and Fu Zhang. "ikd-Tree: An Incremental KD Tree for
-    Robotic Applications."
-[6] Lin, Jiarong, and Fu Zhang. "Loam-livox: A fast, robust, high-precision
-    LiDAR odometry and mapping package for LiDARs of small FoV."
-
-For commercial use, please contact me < ziv.lin.ljr@gmail.com > and
-Dr. Fu Zhang < fuzhang@hku.hk >.
-
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions are met:
-
- 1. Redistributions of source code must retain the above copyright notice,
-    this list of conditions and the following disclaimer.
- 2. Redistributions in binary form must reproduce the above copyright notice,
-    this list of conditions and the following disclaimer in the documentation
-    and/or other materials provided with the distribution.
- 3. Neither the name of the copyright holder nor the names of its
-    contributors may be used to endorse or promote products derived from this
-    software without specific prior written permission.
-
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- POSSIBILITY OF SUCH DAMAGE.
-*/
 #include "r3live.hpp"
 
+// IMU回调函数
 void R3LIVE::imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 {
     sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
@@ -78,6 +32,30 @@ void R3LIVE::imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     sig_buffer.notify_all();
 }
 
+// LiDAR特征回调函数
+void R3LIVE::feat_points_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg_in)
+{
+    sensor_msgs::PointCloud2::Ptr msg(new sensor_msgs::PointCloud2(*msg_in));
+    msg->header.stamp = ros::Time(msg_in->header.stamp.toSec() - m_lidar_imu_time_delay);
+    if (g_camera_lidar_queue.lidar_in(msg_in->header.stamp.toSec() + 0.1) == 0) // 将m_if_have_lidar_data置为true //? 为什么要加0.1
+    {
+        return;
+    }
+    mtx_buffer.lock();
+    // std::cout<<"got feature"<<std::endl;
+    if (msg->header.stamp.toSec() < last_timestamp_lidar)
+    {
+        ROS_ERROR("lidar loop back, clear buffer");
+        lidar_buffer.clear();
+    }
+    // ROS_INFO("get point cloud at time: %.6f", msg->header.stamp.toSec());
+    lidar_buffer.push_back(msg);
+    last_timestamp_lidar = msg->header.stamp.toSec();
+    mtx_buffer.unlock();
+    sig_buffer.notify_all();
+}
+
+// 在ROS格式的点云转换为PCL格式的点云的过程中, 打印field信息
 void printf_field_name(sensor_msgs::PointCloud2::ConstPtr &msg)
 {
     cout << "Input pointcloud field names: [" << msg->fields.size() << "]: ";
@@ -88,6 +66,7 @@ void printf_field_name(sensor_msgs::PointCloud2::ConstPtr &msg)
     cout << endl;
 }
 
+// 将ROS格式的点云转换为PCL格式的点云, 为什么不用PCL库函数, 而是要自定义
 bool R3LIVE::get_pointcloud_data_from_ros_message(sensor_msgs::PointCloud2::ConstPtr &msg, pcl::PointCloud<pcl::PointXYZINormal> &pcl_pc)
 {
 
@@ -148,55 +127,7 @@ bool R3LIVE::get_pointcloud_data_from_ros_message(sensor_msgs::PointCloud2::Cons
     }
 }
 
-bool R3LIVE::sync_packages(MeasureGroup &meas)
-{
-    if (lidar_buffer.empty() || imu_buffer_lio.empty())
-    {
-        return false;
-    }
-
-    /*** push lidar frame ***/
-    if (!lidar_pushed)
-    {
-        meas.lidar.reset(new PointCloudXYZINormal());
-        if (get_pointcloud_data_from_ros_message(lidar_buffer.front(), *(meas.lidar)) == false)
-        {
-            return false;
-        }
-        // pcl::fromROSMsg(*(lidar_buffer.front()), *(meas.lidar));
-        meas.lidar_beg_time = lidar_buffer.front()->header.stamp.toSec();
-        lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
-        meas.lidar_end_time = lidar_end_time;
-        // printf("Input LiDAR time = %.3f, %.3f\n", meas.lidar_beg_time, meas.lidar_end_time);
-        // printf_line_mem_MB;
-        lidar_pushed = true;
-    }
-
-    if (last_timestamp_imu < lidar_end_time)
-    {
-        return false;
-    }
-
-    /*** push imu data, and pop from imu buffer ***/
-    double imu_time = imu_buffer_lio.front()->header.stamp.toSec();
-    meas.imu.clear();
-    while ((!imu_buffer_lio.empty()) && (imu_time < lidar_end_time))
-    {
-        imu_time = imu_buffer_lio.front()->header.stamp.toSec();
-        if (imu_time > lidar_end_time + 0.02)
-            break;
-        meas.imu.push_back(imu_buffer_lio.front());
-        imu_buffer_lio.pop_front();
-    }
-
-    lidar_buffer.pop_front();
-    lidar_pushed = false;
-    // if (meas.imu.empty()) return false;
-    // std::cout<<"[IMU Sycned]: "<<imu_time<<" "<<lidar_end_time<<std::endl;
-    return true;
-}
-
-// project lidar frame to world
+// 将LiDAR点从LiDAR坐标系变换到World坐标系
 void R3LIVE::pointBodyToWorld(PointType const *const pi, PointType *const po)
 {
     Eigen::Vector3d p_body(pi->x, pi->y, pi->z);
@@ -208,6 +139,7 @@ void R3LIVE::pointBodyToWorld(PointType const *const pi, PointType *const po)
     po->intensity = pi->intensity;
 }
 
+// 将LiDAR点从LiDAR坐标系变换到World坐标系, 同时根据强度信息生成颜色信息
 void R3LIVE::RGBpointBodyToWorld(PointType const *const pi, pcl::PointXYZI *const po)
 {
     Eigen::Vector3d p_body(pi->x, pi->y, pi->z);
@@ -218,10 +150,39 @@ void R3LIVE::RGBpointBodyToWorld(PointType const *const pi, pcl::PointXYZI *cons
     po->z = p_global(2);
     po->intensity = pi->intensity;
 
-    float intensity = pi->intensity;
-    intensity = intensity - std::floor(intensity);
+    // 根据强度信息生成颜色信息
+    // float intensity = pi->intensity;
+    // intensity = intensity - std::floor(intensity);
+    // int reflection_map = intensity * 10000;
 
-    int reflection_map = intensity * 10000;
+    // if (reflection_map < 30)
+    // {
+    //     int green = (reflection_map * 255 / 30);
+    //     po->r = 0;
+    //     po->g = green & 0xff;
+    //     po->b = 0xff;
+    // }
+    // else if (reflection_map < 90)
+    // {
+    //     int blue = (((90 - reflection_map) * 255) / 60);
+    //     po->r = 0x0;
+    //     po->g = 0xff;
+    //     po->b = blue & 0xff;
+    // }
+    // else if (reflection_map < 150)
+    // {
+    //     int red = ((reflection_map-90) * 255 / 60);
+    //     po->r = red & 0xff;
+    //     po->g = 0xff;
+    //     po->b = 0x0;
+    // }
+    // else
+    // {
+    //     int green = (((255-reflection_map) * 255) / (255-150));
+    //     po->r = 0xff;
+    //     po->g = green & 0xff;
+    //     po->b = 0;
+    // }
 }
 
 int R3LIVE::get_cube_index(const int &i, const int &j, const int &k)
@@ -229,6 +190,7 @@ int R3LIVE::get_cube_index(const int &i, const int &j, const int &k)
     return (i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k);
 }
 
+// 无用
 bool R3LIVE::center_in_FOV(Eigen::Vector3f cube_p)
 {
     Eigen::Vector3f dis_vec = g_lio_state.pos_end.cast<float>() - cube_p;
@@ -246,6 +208,7 @@ bool R3LIVE::center_in_FOV(Eigen::Vector3f cube_p)
     return ((ang_cos > HALF_FOV_COS) ? true : false);
 }
 
+// 无用
 bool R3LIVE::if_corner_in_FOV(Eigen::Vector3f cube_p)
 {
     Eigen::Vector3f dis_vec = g_lio_state.pos_end.cast<float>() - cube_p;
@@ -440,6 +403,141 @@ void R3LIVE::lasermap_fov_segment()
     copy_time = omp_get_wtime() - t_begin;
     double fov_check_begin = omp_get_wtime();
 
+    // Step 3. 根据livox的FOV，筛选FOV内的点云作为局部地图点
+    //; 下面就是根据Livox小视角的特点，筛选在视角内的哪些点云作为局部配准的地图点云
+    //; 注意：这里选择布局地图点的时候跟LOAM是一样的，虽然维护的是很大的一个立方体地图，但是我每次构建局部地图的时候，
+    //;    只在当前位置的周围的几个立方体里面进行选择，而不是选择整个大的立方体地图
+    for (int i = centerCubeI - FOV_RANGE; i <= centerCubeI + FOV_RANGE; i++)
+    {
+        for (int j = centerCubeJ - FOV_RANGE; j <= centerCubeJ + FOV_RANGE; j++)
+        {
+            for (int k = centerCubeK - FOV_RANGE; k <= centerCubeK + FOV_RANGE; k++)
+            {
+                //; 再次判断所以有效，其实经过上面移动地图立方体的调整，这里是一定满足的
+                if (i >= 0 && i < laserCloudWidth &&
+                    j >= 0 && j < laserCloudHeight &&
+                    k >= 0 && k < laserCloudDepth)
+                {
+                    //; 这个就是利用小立方体的索引和每个小立方体的长度，计算这个小立方体的中心在世界坐标系中的位置
+                    Eigen::Vector3f center_p(cube_len * (i - laserCloudCenWidth),
+                                                cube_len * (j - laserCloudCenHeight),
+                                                cube_len * (k - laserCloudCenDepth));
+
+                    float check1, check2;
+                    float squaredSide1, squaredSide2;
+                    float ang_cos = 1;
+                    //; 这个小立方体上次是否在FOV内
+                    bool &last_inFOV = _last_inFOV[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+                    bool inFOV = center_in_FOV(center_p);  //; 再检查这个小立方体本次在不在FOV内
+
+                    //; 如果上面inFOV=true，说明这个小立方体在本次的FOV内，但是这还不够，因为我们是使用小立方体的中心判断的
+                    //; 下面就是上下左右前后各移动一个小立方体，看移动之后的中心是否仍然在本次FOV内，如果还在的话，说明
+                    //; 这个小立方体内所有的点（不仅是中心点）一定都在本次的FOV内
+                    for (int ii = -1; (ii <= 1) && (!inFOV); ii += 2)
+                    {
+                        for (int jj = -1; (jj <= 1) && (!inFOV); jj += 2)
+                        {
+                            for (int kk = -1; (kk <= 1) && (!inFOV); kk += 2)
+                            {
+                                Eigen::Vector3f corner_p(cube_len * ii, cube_len * jj, cube_len * kk);
+                                corner_p = center_p + 0.5 * corner_p;
+
+                                inFOV = if_corner_in_FOV(corner_p);
+                            }
+                        }
+                    }
+
+                    //; 对所有的小立方体中，对应的当前小立方体是否在本次FOV内的标志进行赋值
+                    now_inFOV[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = inFOV;
+
+#ifdef USE_ikdtree
+                    /*** readd cubes and points ***/
+                    //; 如果这个小立方体在本次FOV内
+                    if (inFOV)
+                    {
+                        //; 计算这个小立方体在整个大立方体地图中的索引，因为整个大立方体是1维数组存储的
+                        int center_index = i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k;
+                        *cube_points_add += *featsArray[center_index];  //; 拼接这个小立方体中的点云
+                        
+                        //! 疑问：这里为什么要把featsArray中的这块清空呢？
+                        //! 解答：因为这里只要判断这个小立方体在本次FOV内，就会把它加到ikdtree中，而不管它上次是否在FOV内。
+                        //!   一般情况下一个小立方体肯定是连续的n帧lidar处理过程中都在FOV内的，那么上次的小立方体里的点加入
+                        //!   ikdtree中之后如果没有对里面的点情况，那么下次判断仍然在FOV内，还会把这些点再次加入ikdtree，
+                        //!   这样就造成了点云的重复加入。
+                        featsArray[center_index]->clear();
+
+                        //; 如果上次这个小立方体不在FOV内，这次又在FOV内，那么就要把这个小立方体加到ikdtree中
+                        if (!last_inFOV)
+                        {
+                            BoxPointType cub_points;
+                            //; 注意这里i<3就是遍历角点的xyz三个坐标轴，然后取中心坐标前左下、后右上得到立方体的角点
+                            for (int i = 0; i < 3; i++)
+                            {
+                                cub_points.vertex_max[i] = center_p[i] + 0.5 * cube_len;
+                                cub_points.vertex_min[i] = center_p[i] - 0.5 * cube_len;
+                            }
+
+                            cub_needad.push_back(cub_points);  //; 需要添加的立方体角点坐标
+                            laserCloudValidInd[laserCloudValidNum] = center_index;
+                            laserCloudValidNum++;
+                        }
+                    }
+
+#else                   
+                    //; 如果判断当前这个立方体仍然在LiDAR的视角范围内，那么就把这个立方体内的点加入到待匹配的局部地图中
+                    if (inFOV)
+                    {
+                        int center_index = i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k;
+                        
+                        //! 重要！这里就是从立方体中取出点云，构成当前帧的局部地图
+                        *featsFromMap += *featsArray[center_index];
+
+                        laserCloudValidInd[laserCloudValidNum] = center_index;
+                        laserCloudValidNum++;
+                    }
+
+                    last_inFOV = inFOV;
+#endif
+                    }
+                }
+            }
+        }
+
+
+#ifdef USE_ikdtree
+    /*** delete cubes ***/
+    // Step 4 再次遍历大立方体地图中的所有小立方体
+    for (int i = 0; i < laserCloudWidth; i++)
+    {
+        for (int j = 0; j < laserCloudHeight; j++)
+        {
+            for (int k = 0; k < laserCloudDepth; k++)
+            {
+                int ind = i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k;
+                //; 如果这个小立方体不在本次FOV内，但是在上次FOV内，那么就要把它从ikdtree中删除
+                if ((!now_inFOV[ind]) && _last_inFOV[ind])
+                {
+                    BoxPointType cub_points;
+                    Eigen::Vector3f center_p(cube_len * (i - laserCloudCenWidth),
+                                                cube_len * (j - laserCloudCenHeight),
+                                                cube_len * (k - laserCloudCenDepth));
+
+                    for (int i = 0; i < 3; i++)
+                    {
+                        cub_points.vertex_max[i] = center_p[i] + 0.5 * cube_len;
+                        cub_points.vertex_min[i] = center_p[i] - 0.5 * cube_len;
+                    }
+
+                    cub_needrm.push_back(cub_points);
+                }
+
+                //; 更新上次是否在立方体内的标志
+                _last_inFOV[ind] = now_inFOV[ind];
+            }
+        }
+    }
+#endif
+
     fov_check_time = omp_get_wtime() - fov_check_begin;
 
     double readd_begin = omp_get_wtime();
@@ -459,28 +557,7 @@ void R3LIVE::lasermap_fov_segment()
     // s_plot6.push_back(omp_get_wtime() - t_begin);
 }
 
-void R3LIVE::feat_points_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg_in)
-{
-    sensor_msgs::PointCloud2::Ptr msg(new sensor_msgs::PointCloud2(*msg_in));
-    msg->header.stamp = ros::Time(msg_in->header.stamp.toSec() - m_lidar_imu_time_delay);
-    if (g_camera_lidar_queue.lidar_in(msg_in->header.stamp.toSec() + 0.1) == 0) // 将m_if_have_lidar_data置为true //? 为什么要加0.1
-    {
-        return;
-    }
-    mtx_buffer.lock();
-    // std::cout<<"got feature"<<std::endl;
-    if (msg->header.stamp.toSec() < last_timestamp_lidar)
-    {
-        ROS_ERROR("lidar loop back, clear buffer");
-        lidar_buffer.clear();
-    }
-    // ROS_INFO("get point cloud at time: %.6f", msg->header.stamp.toSec());
-    lidar_buffer.push_back(msg);
-    last_timestamp_lidar = msg->header.stamp.toSec();
-    mtx_buffer.unlock();
-    sig_buffer.notify_all();
-}
-
+// LIO与VIO共用, 等待地图颜色渲染线程结束
 void R3LIVE::wait_render_thread_finish()
 {
     if (m_render_thread != nullptr)
@@ -490,31 +567,83 @@ void R3LIVE::wait_render_thread_finish()
     }
 }
 
+// 对齐时间区间, 将当前处理的LiDAR帧与对应的若干帧IMU数据封装在结构体MeasureGroup中
+bool R3LIVE::sync_packages(MeasureGroup &meas)
+{
+    if (lidar_buffer.empty() || imu_buffer_lio.empty())
+    {
+        return false;
+    }
+
+    /*** push lidar frame ***/
+    if (!lidar_pushed)
+    {
+        meas.lidar.reset(new PointCloudXYZINormal());
+        if (get_pointcloud_data_from_ros_message(lidar_buffer.front(), *(meas.lidar)) == false) // 将ROS格式的点云转换为PCL格式的点云, 为什么不用PCL库函数, 而是要自定义
+        {
+            return false;
+        }
+        // pcl::fromROSMsg(*(lidar_buffer.front()), *(meas.lidar)); // 将ROS格式的点云转换为PCL格式的点云
+        meas.lidar_beg_time = lidar_buffer.front()->header.stamp.toSec();
+        lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); //? // 这里是否需要sort, 数据结构中存储的最后1个点, 并不一定是真实时间中采集的最后1个点
+        meas.lidar_end_time = lidar_end_time;
+        // printf("Input LiDAR time = %.3f, %.3f\n", meas.lidar_beg_time, meas.lidar_end_time);
+        // printf_line_mem_MB;
+        lidar_pushed = true;
+    }
+
+    if (last_timestamp_imu < lidar_end_time)
+    {
+        return false;
+    }
+
+    /*** push imu data, and pop from imu buffer ***/
+    double imu_time = imu_buffer_lio.front()->header.stamp.toSec();
+    meas.imu.clear();
+    while ((!imu_buffer_lio.empty()) && (imu_time < lidar_end_time))
+    {
+        imu_time = imu_buffer_lio.front()->header.stamp.toSec();
+        if (imu_time > lidar_end_time + 0.02)
+            break;
+        meas.imu.push_back(imu_buffer_lio.front()); // 从deque尾部加进数据, back()是最新的IMU数据
+        imu_buffer_lio.pop_front();
+    }
+
+    lidar_buffer.pop_front();
+    lidar_pushed = false;
+    // if (meas.imu.empty()) return false;
+    // std::cout<<"[IMU Sycned]: "<<imu_time<<" "<<lidar_end_time<<std::endl;
+    return true;
+}
+
+// LIO子系统线程
 int R3LIVE::service_LIO_update()
 {
     nav_msgs::Path path;
     path.header.stamp = ros::Time::now();
     path.header.frame_id = "/world";
-    /*** variables definition ***/
+
+    // 变量定义
     Eigen::Matrix<double, DIM_OF_STATES, DIM_OF_STATES> G, H_T_H, I_STATE;
     G.setZero();
     H_T_H.setZero();
     I_STATE.setIdentity();
 
-    cv::Mat matA1(3, 3, CV_32F, cv::Scalar::all(0));
-    cv::Mat matD1(1, 3, CV_32F, cv::Scalar::all(0));
-    cv::Mat matV1(3, 3, CV_32F, cv::Scalar::all(0));
-    cv::Mat matP(6, 6, CV_32F, cv::Scalar::all(0));
+    cv::Mat matA1(3, 3, CV_32F, cv::Scalar::all(0)); // 无用
+    cv::Mat matD1(1, 3, CV_32F, cv::Scalar::all(0)); // 无用
+    cv::Mat matV1(3, 3, CV_32F, cv::Scalar::all(0)); // 无用
+    cv::Mat matP(6, 6, CV_32F, cv::Scalar::all(0)); // 无用
 
     PointCloudXYZINormal::Ptr feats_undistort(new PointCloudXYZINormal());
     PointCloudXYZINormal::Ptr feats_down(new PointCloudXYZINormal());
     PointCloudXYZINormal::Ptr laserCloudOri(new PointCloudXYZINormal());
     PointCloudXYZINormal::Ptr coeffSel(new PointCloudXYZINormal());
 
-    /*** variables initialize ***/
-    FOV_DEG = fov_deg + 10;
-    HALF_FOV_COS = std::cos((fov_deg + 10.0) * 0.5 * PI_M / 180.0);
+    // 变量初始化
+    FOV_DEG = fov_deg + 10; // 无用
+    HALF_FOV_COS = std::cos((fov_deg + 10.0) * 0.5 * PI_M / 180.0); // 无用
 
+    // 初始化cube
     for (int i = 0; i < laserCloudNum; i++)
     {
         featsArray[i].reset(new PointCloudXYZINormal());
@@ -522,11 +651,11 @@ int R3LIVE::service_LIO_update()
 
     std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
     m_imu_process = p_imu;
-    //------------------------------------------------------------------------------------------------------
+
     ros::Rate rate(5000);
     bool status = ros::ok();
     g_camera_lidar_queue.m_liar_frame_buf = &lidar_buffer;
-    set_initial_state_cov(g_lio_state);
+    set_initial_state_cov(g_lio_state); // 设置状态变量初始值
     while (ros::ok())
     {
         if (flg_exit)
@@ -545,7 +674,7 @@ int R3LIVE::service_LIO_update()
         {
             // printf_line;
             Common_tools::Timer tim;
-            if (sync_packages(Measures) == 0)
+            if (sync_packages(Measures) == 0) // 对Measures中的各项成员变量进行赋值
             {
                 continue;
             }
