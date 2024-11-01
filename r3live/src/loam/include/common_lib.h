@@ -41,6 +41,7 @@
 #define STD_VEC_FROM_EIGEN(mat) std::vector<decltype(mat)::Scalar>(mat.data(), mat.data() + mat.rows() * mat.cols())
 #define DEBUG_FILE_DIR(name) (std::string(std::string(ROOT_DIR) + "Log/" + name))
 
+// 状态变量的维度
 // 18维: R p v bg ba g
 // 24维: R p v bg ba g R_ic p_ic
 // 29维: R p v bg ba g R_ic p_ic t fx fy cx cy
@@ -61,7 +62,7 @@ static const Eigen::Vector3f Zero3f(0, 0, 0);
 // Eigen::Vector3d Lidar_offset_to_IMU(0.05512, 0.02226, 0.0297); // Horizon // TODO 外参直接写到了代码里?
 static const Eigen::Vector3d Lidar_offset_to_IMU(0.04165, 0.02326, -0.0284); // Avia
 
-// 6自由度位姿, 偏移时间, 3轴加速度, 3轴角速度, 3维重力加速度封装在结构体Pose6D中
+// 6自由度位姿, 偏移时间, 3轴加速度, 3轴角速度, 3维重力加速度存储在结构体Pose6D中
 struct Pose6D
 {
     typedef double data_type;
@@ -141,12 +142,12 @@ struct Camera_Lidar_queue
     double m_last_imu_time = -3e88;    // 距当前最近的IMU帧时间戳, 最后的/最新的IMU帧时间戳
     double m_last_visual_time = -3e88; // 距当前最近的Camera帧时间戳, 最后的/最新的Camera帧时间戳
     double m_last_lidar_time = -3e88;  // 距当前最近的LiDAR帧时间戳, 最后的/最新的LiDAR帧时间戳
-    int m_if_have_lidar_data = 0;      // 标志位, 表示当前是否有还未处理的LiDAR数据
-    int m_if_have_camera_data = 0;     // 标志位, 表示当前是否有还未处理的Camera数据
+    int m_if_have_lidar_data = 0;      // 标志位, 判断当前是否有还未处理的LiDAR数据
+    int m_if_have_camera_data = 0;     // 标志位, 判断当前是否有还未处理的Camera数据
     Eigen::Vector3d g_noise_cov_acc;   // 加速度计数据噪声的协方差矩阵
     Eigen::Vector3d g_noise_cov_gyro;  // 陀螺仪数据噪声的协方差矩阵
-    int m_if_dump_log = 1;             // 标志位, 控制是否打印log
-    int m_if_acc_mul_G = 0;            // 标志位, 控制是否将加速度计数据的单位从g转换为m/s^2
+    int m_if_dump_log = 1;             // 标志位, 判断是否打印log
+    int m_if_acc_mul_G = 0;            // 标志位, 判断是否将加速度计数据的单位从g转换为m/s^2
 
     double m_sliding_window_tim = 10000; // 好像无用
     double m_camera_imu_td = 0;          // 好像无用, 实际使用的Camera与IMU之间的时间偏移为td_ext_i2c //! m_camera_imu_td
@@ -315,17 +316,17 @@ struct Camera_Lidar_queue
     }
 };
 
-// 当前处理的LiDAR帧与对应的若干帧IMU数据封装在结构体MeasureGroup中
+// 当前LiDAR帧与对应的若干帧IMU数据存储在结构体MeasureGroup中
 struct MeasureGroup
 {
     MeasureGroup()
     {
         this->lidar.reset(new PointCloudXYZINormal());
     };
-    double lidar_beg_time;                      // 当前处理的LiDAR帧中第1个点的时间戳, 当前处理的LiDAR帧时间戳
-    double lidar_end_time;                      // 当前处理的LiDAR帧中最后1个点的时间戳
-    PointCloudXYZINormal::Ptr lidar;            // 当前处理的LiDAR帧
-    std::deque<sensor_msgs::Imu::ConstPtr> imu; // 当前处理的若干帧IMU数据
+    double lidar_beg_time;                      // 当前LiDAR帧中第1个点的时间戳, 当前LiDAR帧时间戳
+    double lidar_end_time;                      // 当前LiDAR帧中最后1个点的时间戳
+    PointCloudXYZINormal::Ptr lidar;            // 当前LiDAR帧
+    std::deque<sensor_msgs::Imu::ConstPtr> imu; // 当前若干帧IMU数据
 };
 
 struct StatesGroup
@@ -466,7 +467,7 @@ T deg2rad(T degrees)
     return degrees * PI_M / 180.0;
 }
 
-// 将若干数据封装为Pose6D变量
+// 将若干数据存储为Pose6D变量
 template <typename T>
 auto set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::Matrix<T, 3, 1> &g,
                 const Eigen::Matrix<T, 3, 1> &v, const Eigen::Matrix<T, 3, 1> &p, const Eigen::Matrix<T, 3, 3> &R)

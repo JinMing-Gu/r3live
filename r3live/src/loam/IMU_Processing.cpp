@@ -11,7 +11,7 @@
 // #define COV_NOISE_EXT_I2C_T (0.0 * 1e-3)
 // #define COV_NOISE_EXT_I2C_Td (0.0 * 1e-3)
 
-double g_lidar_star_tim = 0; // 当前处理的LiDAR帧中第1个点的时间戳, 当前处理的LiDAR帧时间戳
+double g_lidar_star_tim = 0; // 好像无用 // 当前LiDAR帧中第1个点的时间戳, 当前LiDAR帧时间戳
 
 ImuProcess::ImuProcess() : b_first_frame_(true), imu_need_init_(true), last_imu_(nullptr), start_timestamp_(-1)
 {
@@ -331,10 +331,11 @@ void ImuProcess::lic_point_cloud_undistort(const MeasureGroup &meas, const State
     pcl_out = *(meas.lidar);
     std::sort(pcl_out.points.begin(), pcl_out.points.end(), time_list); // 这里是不是想说, 数据结构中存储的最后1个点, 并不一定是真实时间中采集的最后1个点
     // const double &pcl_end_time = pcl_beg_time + pcl_out.points.back().curvature / double(1000); //?
+
     /*std::cout << "[ IMU Process ]: Process lidar from " << pcl_beg_time - g_lidar_star_tim << " to " << pcl_end_time- g_lidar_star_tim << ", "
               << meas.imu.size() << " imu msgs from " << imu_beg_time- g_lidar_star_tim << " to " << imu_end_time- g_lidar_star_tim
-              << ", last tim: " << state_inout.last_update_time- g_lidar_star_tim << std::endl;
-    */
+              << ", last tim: " << state_inout.last_update_time- g_lidar_star_tim << std::endl;*/
+
     /*** Initialize IMU pose ***/
     IMU_pose.clear();
     // IMUpose.push_back(set_pose6d(0.0, Zero3d, Zero3d, state.vel_end, state.pos_end, state.rot_end));
@@ -503,13 +504,13 @@ void ImuProcess::Process(const MeasureGroup &meas, StatesGroup &stat, PointCloud
     {
         if (1)
         {
-            lic_point_cloud_undistort(meas, stat, *cur_pcl_un_); // LiDAR去畸变, IMU的反向传播
+            lic_point_cloud_undistort(meas, stat, *cur_pcl_un_); // IMU反向传播/LiDAR去畸变
         }
         else
         {
             *cur_pcl_un_ = *meas.lidar;
         }
-        lic_state_propagate(meas, stat); // IMU的前向传播, 包括IMU预积分
+        lic_state_propagate(meas, stat); // IMU前向传播, 包括IMU预积分
     }
     // t2 = omp_get_wtime();
 

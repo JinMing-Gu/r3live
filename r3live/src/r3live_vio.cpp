@@ -111,6 +111,7 @@ void R3LIVE::print_dash_board()
     ANSI_SCREEN_FLUSH;
 }
 
+// 设置状态变量初始值
 void R3LIVE::set_initial_state_cov(StatesGroup &state)
 {
     // Set cov
@@ -498,7 +499,7 @@ void R3LIVE::publish_track_pts(Rgbmap_tracker &tracker)
     sensor_msgs::PointCloud2 ros_pc_msg;
     pcl::toROSMsg(pointcloud_for_pub, ros_pc_msg);
     ros_pc_msg.header.stamp = ros::Time::now(); //.fromSec(last_timestamp_lidar);
-    ros_pc_msg.header.frame_id = "world";       // world; camera_init
+    ros_pc_msg.header.frame_id = "world";       // world camera_init
     m_pub_visual_tracked_3d_pts.publish(ros_pc_msg);
 }
 
@@ -1021,7 +1022,7 @@ void R3LIVE::publish_render_pts(ros::Publisher &pts_pub, Global_map &m_map_rgb_p
         }
     }
     pcl::toROSMsg(pc_rgb, ros_pc_msg);
-    ros_pc_msg.header.frame_id = "world";       // world; camera_init
+    ros_pc_msg.header.frame_id = "world";       // world camera_init
     ros_pc_msg.header.stamp = ros::Time::now(); //.fromSec(last_timestamp_lidar);
     pts_pub.publish(ros_pc_msg);
 }

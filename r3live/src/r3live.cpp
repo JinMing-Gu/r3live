@@ -52,7 +52,7 @@ int main(int argc, char **argv)
     Eigen::initParallel();
     ros::init(argc, argv, "R3LIVE_main");
     R3LIVE *fast_lio_instance = new R3LIVE();
-    ros::Rate rate(5000);
-    bool status = ros::ok();
+    ros::Rate rate(5000); // 无用
+    bool status = ros::ok(); // 无用
     ros::spin();
 }

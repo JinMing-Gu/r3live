@@ -67,7 +67,7 @@ extern MeasureGroup Measures;
 extern StatesGroup g_lio_state;
 
 extern std::shared_ptr<ImuProcess> g_imu_process; // 无用
-extern double g_lidar_star_tim; // 当前处理的LiDAR帧中第1个点的时间戳, 当前处理的LiDAR帧时间戳
+extern double g_lidar_star_tim; // 好像无用 // 当前LiDAR帧中第1个点的时间戳, 当前LiDAR帧时间戳
 extern double g_vio_frame_cost_time;
 extern double g_lio_frame_cost_time;
 extern Common_tools::Cost_time_logger g_cost_time_logger;
@@ -132,11 +132,11 @@ public:
     std::mutex mtx_buffer;
     std::condition_variable sig_buffer;
     bool lidar_pushed = false;
-    bool flg_exit = false;
+    bool flg_exit = false; // 无用
     bool flg_reset = false;
 
     // Buffers for measurements
-    double cube_len = 0.0;
+    double cube_len = 0.0; // cube_side_length, cube侧边长度
     double lidar_end_time = 0.0;
     double last_timestamp_lidar = -1;
     double last_timestamp_imu = -1;
@@ -167,21 +167,22 @@ public:
     std::vector<BoxPointType> cub_needrm;
     std::vector<BoxPointType> cub_needad;
 
-    PointCloudXYZINormal::Ptr featsArray[laserCloudNum]; // 存储1个cube中的所有LiDAR点, cube本身
+    PointCloudXYZINormal::Ptr featsArray[laserCloudNum]; // 存储cube中的所有LiDAR点, 或理解为cube本身
     bool _last_inFOV[laserCloudNum];
     bool now_inFOV[laserCloudNum];
     bool cube_updated[laserCloudNum];
     int laserCloudValidInd[laserCloudNum]; // 无用
-    pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudFullResColor; //(new pcl::PointCloud<pcl::PointXYZI>());
+    pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudFullResColor;
+    // pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudFullResColor(new pcl::PointCloud<pcl::PointXYZI>());
 
     KD_TREE ikdtree;
 
     bool dense_map_en;
     bool flg_EKF_inited = false;
-    bool flg_map_initialized = false;
     bool flg_EKF_converged = false;
+    bool flg_map_initialized = false; // 标志位, 判断地图ikdtree初始化是否成功
     int effect_feat_num = 0;
-    int frame_num = 0; // 无用
+    int frame_num = 0;
     double filter_size_corner_min; // 无用
     double m_voxel_downsample_size_surf;
     double filter_size_map_min;
@@ -189,7 +190,7 @@ public:
     double deltaT;
     double deltaR;
     double aver_time_consu = 0;
-    double frame_first_pt_time = 0;
+    double frame_first_pt_time = 0; // 出现LiDAR异常时, 异常LiDAR帧中第1个点的时间戳, 异常LiDAR帧时间戳
     double m_voxel_downsample_size_axis_z;
     geometry_msgs::PoseStamped msg_body_pose;
     nav_msgs::Odometry odomAftMapped;
@@ -215,7 +216,7 @@ public:
     cv::Mat m_ud_map2;
 
     int g_camera_frame_idx = 0;
-    int g_LiDAR_frame_index = 0;
+    int g_LiDAR_frame_index = 0; // 记录LiDAR帧数
     std::mutex g_mutex_render; // 无用
     std::shared_ptr<Image_frame> g_last_image_pose_for_render = nullptr; // 无用
     std::list<double> frame_cost_time_vec;
@@ -273,7 +274,7 @@ public:
         pub_odom_cam = m_ros_node_handle.advertise<nav_msgs::Odometry>("/camera_odom", 10);
         pub_path_cam = m_ros_node_handle.advertise<nav_msgs::Path>("/camera_path", 10);
 
-        // 接收的话题
+        // 订阅的话题
         std::string LiDAR_pointcloud_topic, IMU_topic, IMAGE_topic, IMAGE_topic_compressed;
         get_ros_parameter<std::string>(m_ros_node_handle, "/LiDAR_pointcloud_topic", LiDAR_pointcloud_topic, std::string("/laser_cloud_flat"));
         get_ros_parameter<std::string>(m_ros_node_handle, "/IMU_topic", IMU_topic, std::string("/livox/imu"));
@@ -303,8 +304,7 @@ public:
         {
             // 通用参数
             scope_color(ANSI_COLOR_RED);
-            get_ros_parameter(m_ros_node_handle, "r3live_common/map_output_dir", m_map_output_dir,
-                              Common_tools::get_home_folder().append("/r3live_output")); // 系统输出文件路径
+            get_ros_parameter(m_ros_node_handle, "r3live_common/map_output_dir", m_map_output_dir, Common_tools::get_home_folder().append("/r3live_output")); // 系统输出文件路径
             get_ros_parameter(m_ros_node_handle, "r3live_common/append_global_map_point_step", m_append_global_map_point_step, 4);
             get_ros_parameter(m_ros_node_handle, "r3live_common/recent_visited_voxel_activated_time", m_recent_visited_voxel_activated_time, 0.0);
             get_ros_parameter(m_ros_node_handle, "r3live_common/maximum_image_buffer", m_maximum_image_buffer, 20000);
@@ -314,7 +314,6 @@ public:
             get_ros_parameter(m_ros_node_handle, "r3live_common/minimum_pts_size", m_minumum_rgb_pts_size, 0.05);
             get_ros_parameter(m_ros_node_handle, "r3live_common/record_offline_map", m_if_record_mvs, 0);
             get_ros_parameter(m_ros_node_handle, "r3live_common/pub_pt_minimum_views", m_pub_pt_minimum_views, 5);
-
             get_ros_parameter(m_ros_node_handle, "r3live_common/image_downsample_ratio", m_image_downsample_ratio, 1.0);
             get_ros_parameter(m_ros_node_handle, "r3live_common/esikf_iter_times", esikf_iter_times, 2);
             get_ros_parameter(m_ros_node_handle, "r3live_common/estimate_i2c_extrinsic", m_if_estimate_i2c_extrinsic, 0);
@@ -330,8 +329,7 @@ public:
             get_ros_parameter(m_ros_node_handle, "r3live_lio/max_iteration", NUM_MAX_ITERATIONS, 4);
             get_ros_parameter(m_ros_node_handle, "r3live_lio/fov_degree", fov_deg, 360.00);
             get_ros_parameter(m_ros_node_handle, "r3live_lio/voxel_downsample_size_surf", m_voxel_downsample_size_surf, 0.3);
-            get_ros_parameter(m_ros_node_handle, "r3live_lio/voxel_downsample_size_axis_z", m_voxel_downsample_size_axis_z,
-                              m_voxel_downsample_size_surf);
+            get_ros_parameter(m_ros_node_handle, "r3live_lio/voxel_downsample_size_axis_z", m_voxel_downsample_size_axis_z, m_voxel_downsample_size_surf);
             get_ros_parameter(m_ros_node_handle, "r3live_lio/filter_size_map", filter_size_map_min, 0.4);
             get_ros_parameter(m_ros_node_handle, "r3live_lio/cube_side_length", cube_len, 10000000.0);
             get_ros_parameter(m_ros_node_handle, "r3live_lio/maximum_pt_kdtree_dis", m_maximum_pt_kdtree_dis, 0.5);
@@ -353,7 +351,7 @@ public:
             cout << ANSI_COLOR_BLUE_BOLD << "Create r3live output dir: " << m_map_output_dir << ANSI_COLOR_RESET << endl;
             Common_tools::create_dir(m_map_output_dir);
         }
-        m_thread_pool_ptr = std::make_shared<Common_tools::ThreadPool>(6, true, false); // 线程池, 至少需要5个线程, 这里我们分配6个线程
+        m_thread_pool_ptr = std::make_shared<Common_tools::ThreadPool>(6, true, false); // 线程池, 至少需要5个线程, 这里分配6个线程
         g_cost_time_logger.init_log(std::string(m_map_output_dir).append("/cost_time_logger.log")); // 设置输出文件cost_time_logger.log
         m_map_rgb_pts.set_minmum_dis(m_minumum_rgb_pts_size);
         m_map_rgb_pts.m_recent_visited_voxel_activated_time = m_recent_visited_voxel_activated_time;
@@ -397,7 +395,7 @@ public:
     bool if_corner_in_FOV(Eigen::Vector3f cube_p); // 无用
     void lasermap_fov_segment();
     void wait_render_thread_finish(); // LIO与VIO共用, 等待地图颜色渲染线程结束
-    bool sync_packages(MeasureGroup &meas); // 对齐时间区间, 将当前处理的LiDAR帧与对应的若干帧IMU数据封装在结构体MeasureGroup中
+    bool sync_packages(MeasureGroup &meas); // 同步数据, 将当前LiDAR帧与对应的若干帧IMU数据存储在结构体MeasureGroup中, 再将这些数据从各自队列中删除
     int service_LIO_update(); // LIO子系统线程
 
     // VIO子系统函数
