@@ -63,7 +63,8 @@ void dump_lio_state_to_log(FILE *fp)
     {
         Eigen::Vector3d rot_angle = Sophus::SO3d(Eigen::Quaterniond(g_lio_state.rot_end)).log();
         Eigen::Vector3d rot_ext_i2c_angle = Sophus::SO3d(Eigen::Quaterniond(g_lio_state.rot_ext_i2c)).log();
-        fprintf(fp, "%lf ", g_lio_state.last_update_time - g_camera_lidar_queue.m_first_imu_time); // Time   [0]
+        fprintf(fp, "%lf ", Measures.lidar_beg_time);
+        // fprintf(fp, "%lf ", g_lio_state.last_update_time - g_camera_lidar_queue.m_first_imu_time); // Time   [0]
         fprintf(fp, "%lf %lf %lf ", rot_angle(0), rot_angle(1), rot_angle(2));                     // Angle  [1-3]
         fprintf(fp, "%lf %lf %lf ", g_lio_state.pos_end(0), g_lio_state.pos_end(1),
                 g_lio_state.pos_end(2));            // Pos    [4-6]
@@ -77,24 +78,34 @@ void dump_lio_state_to_log(FILE *fp)
                 g_lio_state.bias_a(2)); // Bias_a [19-21]
         fprintf(fp, "%lf %lf %lf ", g_lio_state.gravity(0), g_lio_state.gravity(1),
                 g_lio_state.gravity(2)); // Gravity[22-24]
-        fprintf(fp, "%lf %lf %lf ", rot_ext_i2c_angle(0), rot_ext_i2c_angle(1),
-                rot_ext_i2c_angle(2)); // Rot_ext_i2c[25-27]
-        fprintf(fp, "%lf %lf %lf ", g_lio_state.pos_ext_i2c(0), g_lio_state.pos_ext_i2c(1),
-                g_lio_state.pos_ext_i2c(2)); // pos_ext_i2c [28-30]
-        fprintf(fp, "%lf %lf %lf %lf ", g_lio_state.cam_intrinsic(0), g_lio_state.cam_intrinsic(1), g_lio_state.cam_intrinsic(2),
-                g_lio_state.cam_intrinsic(3));       // Camera Intrinsic [31-34]
-        fprintf(fp, "%lf ", g_lio_state.td_ext_i2c); // Camera Intrinsic [35]
-        // cout <<  g_lio_state.cov.diagonal().transpose() << endl;
-        // cout <<  g_lio_state.cov.block(0,0,3,3) << endl;
-        for (int idx = 0; idx < DIM_OF_STATES; idx++) // Cov    [36-64]
-        {
-            fprintf(fp, "%.9f ", sqrt(g_lio_state.cov(idx, idx)));
-        }
-        fprintf(fp, "%lf %lf ", g_lio_frame_cost_time, g_vio_frame_cost_time); // costime [65-66]
+        // fprintf(fp, "%lf %lf %lf ", rot_ext_i2c_angle(0), rot_ext_i2c_angle(1),
+        //         rot_ext_i2c_angle(2)); // Rot_ext_i2c[25-27]
+        // fprintf(fp, "%lf %lf %lf ", g_lio_state.pos_ext_i2c(0), g_lio_state.pos_ext_i2c(1),
+        //         g_lio_state.pos_ext_i2c(2)); // pos_ext_i2c [28-30]
+        // fprintf(fp, "%lf %lf %lf %lf ", g_lio_state.cam_intrinsic(0), g_lio_state.cam_intrinsic(1), g_lio_state.cam_intrinsic(2),
+        //         g_lio_state.cam_intrinsic(3));       // Camera Intrinsic [31-34]
+        // fprintf(fp, "%lf ", g_lio_state.td_ext_i2c); // Camera Intrinsic [35]
+        // // cout <<  g_lio_state.cov.diagonal().transpose() << endl;
+        // // cout <<  g_lio_state.cov.block(0,0,3,3) << endl;
+        // for (int idx = 0; idx < DIM_OF_STATES; idx++) // Cov    [36-64]
+        // {
+        //     fprintf(fp, "%.9f ", sqrt(g_lio_state.cov(idx, idx)));
+        // }
+        // fprintf(fp, "%lf %lf ", g_lio_frame_cost_time, g_vio_frame_cost_time); // costime [65-66]
         fprintf(fp, "\r\n");
         fflush(fp);
     }
 }
+
+// void dump_lio_state_to_log(FILE *fp)
+// {
+//     Eigen::Vector3d rot_angle = Sophus::SO3d(Eigen::Quaterniond(g_lio_state.rot_end)).log();
+//     fprintf(fp, "%lf ", Measures.lidar_beg_time);
+//     fprintf(fp, "%lf %lf %lf ", g_lio_state.pos_end(0), g_lio_state.pos_end(1), g_lio_state.pos_end(2));    // Pos
+//     fprintf(fp, "%lf %lf %lf ", rot_angle(0), rot_angle(1), rot_angle(2));                            // Angle
+//     fprintf(fp, "\r\n");
+//     fflush(fp);
+// }
 
 double g_last_stamped_mem_mb = 0;
 std::string append_space_to_bits(std::string &in_str, int bits)
@@ -967,12 +978,14 @@ void R3LIVE::service_pub_rgb_maps()
     }
     while (1)
     {
+        pcl::VoxelGrid<pcl::PointXYZRGB> voxel_filter;
+        pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> statistical_filter;
         ros::spinOnce();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        pcl::PointCloud<pcl::PointXYZRGB> pc_rgb;
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr pc_rgb(new pcl::PointCloud<pcl::PointXYZRGB>);
         sensor_msgs::PointCloud2 ros_pc_msg;
         int pts_size = m_map_rgb_pts.m_rgb_pts_vec.size();
-        pc_rgb.resize(number_of_pts_per_topic);
+        pc_rgb->resize(number_of_pts_per_topic);
         // for (int i = pts_size - 1; i > 0; i--)
         int pub_idx_size = 0;
         int cur_topic_idx = 0;
@@ -987,18 +1000,23 @@ void R3LIVE::service_pub_rgb_maps()
             {
                 continue;
             }
-            pc_rgb.points[pub_idx_size].x = m_map_rgb_pts.m_rgb_pts_vec[i]->m_pos[0];
-            pc_rgb.points[pub_idx_size].y = m_map_rgb_pts.m_rgb_pts_vec[i]->m_pos[1];
-            pc_rgb.points[pub_idx_size].z = m_map_rgb_pts.m_rgb_pts_vec[i]->m_pos[2];
-            pc_rgb.points[pub_idx_size].r = m_map_rgb_pts.m_rgb_pts_vec[i]->m_rgb[2];
-            pc_rgb.points[pub_idx_size].g = m_map_rgb_pts.m_rgb_pts_vec[i]->m_rgb[1];
-            pc_rgb.points[pub_idx_size].b = m_map_rgb_pts.m_rgb_pts_vec[i]->m_rgb[0];
+            pc_rgb->points[pub_idx_size].x = m_map_rgb_pts.m_rgb_pts_vec[i]->m_pos[0];
+            pc_rgb->points[pub_idx_size].y = m_map_rgb_pts.m_rgb_pts_vec[i]->m_pos[1];
+            pc_rgb->points[pub_idx_size].z = m_map_rgb_pts.m_rgb_pts_vec[i]->m_pos[2];
+            pc_rgb->points[pub_idx_size].r = m_map_rgb_pts.m_rgb_pts_vec[i]->m_rgb[2];
+            pc_rgb->points[pub_idx_size].g = m_map_rgb_pts.m_rgb_pts_vec[i]->m_rgb[1];
+            pc_rgb->points[pub_idx_size].b = m_map_rgb_pts.m_rgb_pts_vec[i]->m_rgb[0];
             // pc_rgb.points[i].intensity = m_map_rgb_pts.m_rgb_pts_vec[i]->m_obs_dis;
+
             pub_idx_size++;
             if (pub_idx_size == number_of_pts_per_topic)
             {
                 pub_idx_size = 0;
-                pcl::toROSMsg(pc_rgb, ros_pc_msg);
+                statistical_filter.setInputCloud(pc_rgb);
+                statistical_filter.setMeanK(10); // 数越大, 离群点剔除效果越明显
+                statistical_filter.setStddevMulThresh(1.0); // 数越小, 离群点剔除效果越明显
+                statistical_filter.filter(*pc_rgb);
+                pcl::toROSMsg(*pc_rgb, ros_pc_msg);
                 ros_pc_msg.header.frame_id = "world";
                 ros_pc_msg.header.stamp = ros::Time::now();
                 if (m_pub_rgb_render_pointcloud_ptr_vec[cur_topic_idx] == nullptr)
@@ -1014,8 +1032,12 @@ void R3LIVE::service_pub_rgb_maps()
             }
         }
 
-        pc_rgb.resize(pub_idx_size);
-        pcl::toROSMsg(pc_rgb, ros_pc_msg);
+        pc_rgb->resize(pub_idx_size);
+        statistical_filter.setInputCloud(pc_rgb);
+        statistical_filter.setMeanK(10); // 数越大, 离群点剔除效果越明显
+        statistical_filter.setStddevMulThresh(1.0); // 数越小, 离群点剔除效果越明显
+        statistical_filter.filter(*pc_rgb);
+        pcl::toROSMsg(*pc_rgb, ros_pc_msg);
         ros_pc_msg.header.frame_id = "world";
         ros_pc_msg.header.stamp = ros::Time::now();
         if (m_pub_rgb_render_pointcloud_ptr_vec[cur_topic_idx] == nullptr)
@@ -1191,7 +1213,7 @@ void R3LIVE::service_VIO_update()
         res_photometric = vio_photometric(state_out, op_track, img_pose);
         g_cost_time_logger.record(tim, "Vio_f2m");
         g_lio_state = state_out;
-        print_dash_board();
+        // print_dash_board();
         set_image_pose(img_pose, state_out);
 
         if (1)
@@ -1224,7 +1246,7 @@ void R3LIVE::service_VIO_update()
             g_cost_time_logger.record(tim, "Mvs_record");
         }
         // ANCHOR - render point cloud
-        dump_lio_state_to_log(m_lio_state_fp);
+        // dump_lio_state_to_log(m_lio_state_fp);
         m_mutex_lio_process.unlock();
         // cout << "Solve image pose cost " << tim.toc("Solve_pose") << endl;
         m_map_rgb_pts.update_pose_for_projection(img_pose, -0.4);

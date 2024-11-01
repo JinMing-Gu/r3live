@@ -42,6 +42,7 @@ public:
 
     void Process(const MeasureGroup &meas, StatesGroup &state, PointCloudXYZINormal::Ptr pcl_un_);
     void Reset();
+    void set_extrinsic(const Eigen::Vector3d &transl, const Eigen::Matrix3d &rot);
     void IMU_Initial(const MeasureGroup &meas, StatesGroup &state, int &N);
 
     // Eigen::Matrix3d Exp(const Eigen::Vector3d &ang_vel, const double &dt);
@@ -75,12 +76,15 @@ public:
     int init_iter_num = 1;
     Eigen::Vector3d mean_acc;
     Eigen::Vector3d mean_gyr;
+    Eigen::Matrix3d Lidar_R_wrt_IMU;
+    Eigen::Vector3d Lidar_T_wrt_IMU;
 
     /*** Undistorted pointcloud ***/
     PointCloudXYZINormal::Ptr cur_pcl_un_;
 
     //// For timestamp usage
     sensor_msgs::ImuConstPtr last_imu_;
+    double last_lidar_end_time_;
 
     /*** For gyroscope integration ***/
     double start_timestamp_;

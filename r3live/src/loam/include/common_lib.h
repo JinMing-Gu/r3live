@@ -315,6 +315,8 @@ public:
     Eigen::Vector3d bias_a;  // [12-14] accelerator bias
     Eigen::Vector3d gravity; // [15-17] the estimated gravity acceleration
 
+    Eigen::Matrix3d rot_ext_l2i;                             // Extrinsic between LiDAR frame to IMU frame on rotation.
+    Eigen::Vector3d pos_ext_l2i;                             // Extrinsic between LiDAR frame to IMU frame on position.
     Eigen::Matrix3d rot_ext_i2c;                             // [18-20] Extrinsic between IMU frame to Camera frame on rotation.
     Eigen::Vector3d pos_ext_i2c;                             // [21-23] Extrinsic between IMU frame to Camera frame on position.
     double td_ext_i2c_delta;                                 // [24]    Extrinsic between IMU frame to Camera frame on position.
@@ -332,6 +334,9 @@ public:
         gravity = Eigen::Vector3d(0.0, 0.0, 9.805);
         // gravity = Eigen::Vector3d(0.0, 9.805, 0.0);
 
+        rot_ext_l2i = Eigen::Matrix3d::Identity();
+        pos_ext_l2i = vec_3::Zero();
+        
         // Ext camera w.r.t. IMU
         rot_ext_i2c = Eigen::Matrix3d::Identity();
         pos_ext_i2c = vec_3::Zero();

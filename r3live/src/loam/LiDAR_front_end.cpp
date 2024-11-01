@@ -241,6 +241,8 @@ void horizon_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
             pl_full[i].z = msg->points[i].z;
             pl_full[i].intensity = msg->points[i].reflectivity;
 
+            // msg->points[i].offset_time, 单位: 纳秒
+            // pl_full[i].curvature, 单位: 毫秒
             pl_full[i].curvature = msg->points[i].offset_time / float(1000000); // use curvature as time of each laser points
 
             if ((std::abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) || (std::abs(pl_full[i].y - pl_full[i - 1].y) > 1e-7) ||
@@ -343,7 +345,9 @@ void velo16_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
         added_pt.normal_x = 0;
         added_pt.normal_y = 0;
         added_pt.normal_z = 0;
-        added_pt.curvature = pl_orig.points[i].time * 1.e-3f;
+        // pl_orig.points[i].time, 单位: 微秒
+        // added_pt.curvature, 单位: 毫秒
+        added_pt.curvature = pl_orig.points[i].time * 1000;
 
         // pl_processed.points.push_back(added_pt);
         // if (i % point_filter_num == 0)
@@ -396,7 +400,7 @@ void velo16_handler1(const sensor_msgs::PointCloud2::ConstPtr &msg)
             added_pt.y = pl_orig.points[i].y;
             added_pt.z = pl_orig.points[i].z;
             added_pt.intensity = pl_orig.points[i].intensity;
-            added_pt.curvature = pl_orig.points[i].time * 1.e-3f;
+            added_pt.curvature = pl_orig.points[i].time * 1000;
 
             pl_buff[layer].points.push_back(added_pt);
         }
@@ -435,7 +439,9 @@ void velo16_handler1(const sensor_msgs::PointCloud2::ConstPtr &msg)
             added_pt.y = pl_orig.points[i].y;
             added_pt.z = pl_orig.points[i].z;
             added_pt.intensity = pl_orig.points[i].intensity;
-            added_pt.curvature = pl_orig.points[i].time * 1.e-3f;
+            // pl_orig.points[i].time, 单位: 微秒
+            // added_pt.curvature, 单位: 毫秒
+            added_pt.curvature = pl_orig.points[i].time * 1000;
 
             // if (i % point_filter_num == 0)
             if (i % 4 == 0)
@@ -566,11 +572,14 @@ void rotating_lidar_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
         added_pt.normal_x = 0;
         added_pt.normal_y = 0;
         added_pt.normal_z = 0;
-        added_pt.curvature = (i / plsize) * 1000;
+        // double(i) / double(plsize - 1), 在100毫秒内占的比例
+        // added_pt.curvature, 单位: 毫秒
+        added_pt.curvature = (double(i) / double(plsize - 1)) * 100;
+        // added_pt.curvature = 0;
 
         // pl_processed.points.push_back(added_pt);
         // if (i % point_filter_num == 0)
-        if (i % 4 == 0)
+        if (i % 1 == 0)
         {
             if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind * blind))
             {

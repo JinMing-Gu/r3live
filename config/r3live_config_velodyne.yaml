@@ -3,6 +3,7 @@ Lidar_front_end:
    N_SCANS: 6
    using_raw_point: 1
    point_step: 1
+   blind: 2.6
    
 r3live_common:
    if_dump_log: 0                   # If recording ESIKF update log. [default = 0]
@@ -16,20 +17,19 @@ r3live_common:
    append_global_map_point_step: 4  # The point step of append point to global map. [default = 4]
 
 r3live_vio:
-   image_width: 1280
-   image_height: 1024
+   image_width: 672
+   image_height: 376
    camera_intrinsic:
-      [863.4241, 0.0, 640.6808,
-      0.0,  863.4171, 518.3392,
+      [264.9425, 0.0, 334.3975,
+      0.0,  264.79, 183.162,
       0.0, 0.0, 1.0 ] 
-   camera_dist_coeffs: [-0.1080, 0.1050, -1.2872e-04, 5.7923e-05, -0.0222]  #k1, k2, p1, p2, k3
+   camera_dist_coeffs: [-0.0442856, 0.0133574, 0.0, 0.0, 0.0]  #k1, k2, p1, p2, k3
    # Fine extrinsic value. form camera-LiDAR calibration.
    camera_ext_R:
-         [-0.00113207, -0.0158688, 0.999873,
-            -0.9999999,  -0.000486594, -0.00113994,
-            0.000504622,  -0.999874,  -0.0158682]
-   # camera_ext_t: [0.050166, 0.0474116, -0.0312415] 
-   camera_ext_t: [0,0,0] 
+         [0.9995897597632202, 0.017170804625958682, -0.02292325554984076,
+            0.023146589349355498, -0.01292276982900426, 0.9996485569546115,
+            0.016868538110887142, -0.9997690560766732, -0.013314913952324876]
+   camera_ext_t: [-0.08518352335378968, 0.1257734831824673, -0.20411145029272001] 
    # Rough extrinsic value, form CAD model, is not correct enough, but can be online calibrated in our datasets.
    # camera_ext_R:
    #    [0, 0, 1,
@@ -39,14 +39,14 @@ r3live_vio:
    
 r3live_lio:        
    lio_update_point_step: 4   # Point step used for LIO update.  
-   max_iteration: 2           # Maximum times of LIO esikf.
+   max_iteration: 3           # Maximum times of LIO esikf.
    lidar_time_delay: 0        # The time-offset between LiDAR and IMU, provided by user. 
-   filter_size_corner: 0.30   
-   filter_size_surf: 0.30
-   filter_size_surf_z: 0.30
-   filter_size_map: 0.30
-   cube_side_length: 1000
+   filter_size_corner: 0.5
+   filter_size_surf: 1.0
+   filter_size_surf_z: 0.5
+   filter_size_map: 0.5
+   cube_side_length: 200 # 1000
    lidar_ext_R: [ 1,0,0,
                   0,1,0,
                   0,0,1]
-   lidar_ext_t: [ 0, 0, 0] # lidar to imu
+   lidar_ext_t: [ 0, 0, 0.28] # lidar to imu

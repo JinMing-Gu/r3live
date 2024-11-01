@@ -47,6 +47,12 @@ Dr. Fu Zhang < fuzhang@hku.hk >.
 */
 #include "r3live.hpp"
 
+#define VEC_FROM_ARRAY(v) v[0], v[1], v[2]
+#define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]
+
+Eigen::Vector3d lidar_t_wrt_imu(0, 0, 0);
+Eigen::Matrix3d lidar_r_wrt_imu(Eigen::Matrix3d::Identity());
+
 void R3LIVE::imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 {
     sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
@@ -439,6 +445,141 @@ void R3LIVE::lasermap_fov_segment()
     copy_time = omp_get_wtime() - t_begin;
     double fov_check_begin = omp_get_wtime();
 
+    // Step 3. 根据livox的FOV，筛选FOV内的点云作为局部地图点
+    //; 下面就是根据Livox小视角的特点，筛选在视角内的哪些点云作为局部配准的地图点云
+    //; 注意：这里选择布局地图点的时候跟LOAM是一样的，虽然维护的是很大的一个立方体地图，但是我每次构建局部地图的时候，
+    //;    只在当前位置的周围的几个立方体里面进行选择，而不是选择整个大的立方体地图
+    for (int i = centerCubeI - FOV_RANGE; i <= centerCubeI + FOV_RANGE; i++)
+    {
+        for (int j = centerCubeJ - FOV_RANGE; j <= centerCubeJ + FOV_RANGE; j++)
+        {
+            for (int k = centerCubeK - FOV_RANGE; k <= centerCubeK + FOV_RANGE; k++)
+            {
+                //; 再次判断所以有效，其实经过上面移动地图立方体的调整，这里是一定满足的
+                if (i >= 0 && i < laserCloudWidth &&
+                    j >= 0 && j < laserCloudHeight &&
+                    k >= 0 && k < laserCloudDepth)
+                {
+                    //; 这个就是利用小立方体的索引和每个小立方体的长度，计算这个小立方体的中心在世界坐标系中的位置
+                    Eigen::Vector3f center_p(cube_len * (i - laserCloudCenWidth),
+                                                cube_len * (j - laserCloudCenHeight),
+                                                cube_len * (k - laserCloudCenDepth));
+
+                    float check1, check2;
+                    float squaredSide1, squaredSide2;
+                    float ang_cos = 1;
+                    //; 这个小立方体上次是否在FOV内
+                    bool &last_inFOV = _last_inFOV[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+                    bool inFOV = center_in_FOV(center_p);  //; 再检查这个小立方体本次在不在FOV内
+
+                    //; 如果上面inFOV=true，说明这个小立方体在本次的FOV内，但是这还不够，因为我们是使用小立方体的中心判断的
+                    //; 下面就是上下左右前后各移动一个小立方体，看移动之后的中心是否仍然在本次FOV内，如果还在的话，说明
+                    //; 这个小立方体内所有的点（不仅是中心点）一定都在本次的FOV内
+                    for (int ii = -1; (ii <= 1) && (!inFOV); ii += 2)
+                    {
+                        for (int jj = -1; (jj <= 1) && (!inFOV); jj += 2)
+                        {
+                            for (int kk = -1; (kk <= 1) && (!inFOV); kk += 2)
+                            {
+                                Eigen::Vector3f corner_p(cube_len * ii, cube_len * jj, cube_len * kk);
+                                corner_p = center_p + 0.5 * corner_p;
+
+                                inFOV = if_corner_in_FOV(corner_p);
+                            }
+                        }
+                    }
+
+                    //; 对所有的小立方体中，对应的当前小立方体是否在本次FOV内的标志进行赋值
+                    now_inFOV[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = inFOV;
+
+#ifdef USE_ikdtree
+                    /*** readd cubes and points ***/
+                    //; 如果这个小立方体在本次FOV内
+                    if (inFOV)
+                    {
+                        //; 计算这个小立方体在整个大立方体地图中的索引，因为整个大立方体是1维数组存储的
+                        int center_index = i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k;
+                        *cube_points_add += *featsArray[center_index];  //; 拼接这个小立方体中的点云
+                        
+                        //! 疑问：这里为什么要把featsArray中的这块清空呢？
+                        //! 解答：因为这里只要判断这个小立方体在本次FOV内，就会把它加到ikdtree中，而不管它上次是否在FOV内。
+                        //!   一般情况下一个小立方体肯定是连续的n帧lidar处理过程中都在FOV内的，那么上次的小立方体里的点加入
+                        //!   ikdtree中之后如果没有对里面的点情况，那么下次判断仍然在FOV内，还会把这些点再次加入ikdtree，
+                        //!   这样就造成了点云的重复加入。
+                        featsArray[center_index]->clear();
+
+                        //; 如果上次这个小立方体不在FOV内，这次又在FOV内，那么就要把这个小立方体加到ikdtree中
+                        if (!last_inFOV)
+                        {
+                            BoxPointType cub_points;
+                            //; 注意这里i<3就是遍历角点的xyz三个坐标轴，然后取中心坐标前左下、后右上得到立方体的角点
+                            for (int i = 0; i < 3; i++)
+                            {
+                                cub_points.vertex_max[i] = center_p[i] + 0.5 * cube_len;
+                                cub_points.vertex_min[i] = center_p[i] - 0.5 * cube_len;
+                            }
+
+                            cub_needad.push_back(cub_points);  //; 需要添加的立方体角点坐标
+                            laserCloudValidInd[laserCloudValidNum] = center_index;
+                            laserCloudValidNum++;
+                        }
+                    }
+
+#else                   
+                    //; 如果判断当前这个立方体仍然在LiDAR的视角范围内，那么就把这个立方体内的点加入到待匹配的局部地图中
+                    if (inFOV)
+                    {
+                        int center_index = i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k;
+                        
+                        //! 重要！这里就是从立方体中取出点云，构成当前帧的局部地图
+                        *featsFromMap += *featsArray[center_index];
+
+                        laserCloudValidInd[laserCloudValidNum] = center_index;
+                        laserCloudValidNum++;
+                    }
+
+                    last_inFOV = inFOV;
+#endif
+                    }
+                }
+            }
+        }
+
+
+#ifdef USE_ikdtree
+    /*** delete cubes ***/
+    // Step 4 再次遍历大立方体地图中的所有小立方体
+    for (int i = 0; i < laserCloudWidth; i++)
+    {
+        for (int j = 0; j < laserCloudHeight; j++)
+        {
+            for (int k = 0; k < laserCloudDepth; k++)
+            {
+                int ind = i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k;
+                //; 如果这个小立方体不在本次FOV内，但是在上次FOV内，那么就要把它从ikdtree中删除
+                if ((!now_inFOV[ind]) && _last_inFOV[ind])
+                {
+                    BoxPointType cub_points;
+                    Eigen::Vector3f center_p(cube_len * (i - laserCloudCenWidth),
+                                                cube_len * (j - laserCloudCenHeight),
+                                                cube_len * (k - laserCloudCenDepth));
+
+                    for (int i = 0; i < 3; i++)
+                    {
+                        cub_points.vertex_max[i] = center_p[i] + 0.5 * cube_len;
+                        cub_points.vertex_min[i] = center_p[i] - 0.5 * cube_len;
+                    }
+
+                    cub_needrm.push_back(cub_points);
+                }
+
+                //; 更新上次是否在立方体内的标志
+                _last_inFOV[ind] = now_inFOV[ind];
+            }
+        }
+    }
+#endif
+
     fov_check_time = omp_get_wtime() - fov_check_begin;
 
     double readd_begin = omp_get_wtime();
@@ -491,6 +632,14 @@ void R3LIVE::wait_render_thread_finish()
 
 int R3LIVE::service_LIO_update()
 {
+    std::vector<double> lidar_ext_R_data, lidar_ext_t_data;
+    m_ros_node_handle.getParam("r3live_lio/lidar_ext_R", lidar_ext_R_data);
+    m_ros_node_handle.getParam("r3live_lio/lidar_ext_t", lidar_ext_t_data);
+    lidar_r_wrt_imu << MAT_FROM_ARRAY(lidar_ext_R_data);
+    lidar_t_wrt_imu << VEC_FROM_ARRAY(lidar_ext_t_data);
+    std::cout << "lidar_r_wrt_imu: \n" << lidar_r_wrt_imu << std::endl;
+    std::cout << "lidar_t_wrt_imu: " << lidar_t_wrt_imu.transpose() << std::endl;
+    
     nav_msgs::Path path;
     path.header.stamp = ros::Time::now();
     path.header.frame_id = "/world";
@@ -520,6 +669,7 @@ int R3LIVE::service_LIO_update()
     }
 
     std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
+    p_imu->set_extrinsic(lidar_t_wrt_imu, lidar_r_wrt_imu);
     m_imu_process = p_imu;
     //------------------------------------------------------------------------------------------------------
     ros::Rate rate(5000);
@@ -846,7 +996,7 @@ int R3LIVE::service_LIO_update()
                         // }
 
                         g_lio_state = state_propagate + solution;
-                        print_dash_board();
+                        // print_dash_board();
                         // cout << ANSI_COLOR_RED_BOLD << "Run EKF uph, vec = " << vec.head<9>().transpose() << ANSI_COLOR_RESET << endl;
                         rot_add = solution.block<3, 1>(0, 0);
                         t_add = solution.block<3, 1>(3, 0);
@@ -863,7 +1013,7 @@ int R3LIVE::service_LIO_update()
                     // printf_line;
                     g_lio_state.last_update_time = Measures.lidar_end_time;
                     euler_cur = RotMtoEuler(g_lio_state.rot_end);
-                    dump_lio_state_to_log(m_lio_state_fp);
+                    // dump_lio_state_to_log(m_lio_state_fp);
 
                     /*** Rematch Judgement ***/
                     rematch_en = false;
@@ -897,6 +1047,7 @@ int R3LIVE::service_LIO_update()
                     //      << ", solver_cost: " << solve_time * 1000.0 << endl;
                     // cout <<"Iter cost time: " << tim.toc("Iter") << endl;
                 }
+                dump_lio_state_to_log(m_lio_state_fp);
 
                 t3 = omp_get_wtime();
 

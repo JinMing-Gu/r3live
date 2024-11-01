@@ -24,11 +24,21 @@ r3live_vio:
        0.0,          0.0,          1.0]
    camera_dist_coeffs: [-0.374493, 0.130217, 0.000006, 0.000265, 0.0]  #k1, k2, p1, p2, k3
    # Fine extrinsic value. form camera-LiDAR calibration.
+
+   # vv6 car2
+   # camera_ext_R:
+   #       [0.999249,   -0.0307446, -0.0235714,
+   #        0.0226761,  -0.02915,   0.999318,
+   #        -0.0314108, -0.999102,  -0.028431]
+   # camera_ext_t: [-0.0407294, 2.12344, 1.51071]
+
+   # midfield
    camera_ext_R:
-         [0.999249,   -0.0307446, -0.0235714,
-          0.0226761,  -0.02915,   0.999318,
-          -0.0314108, -0.999102,  -0.028431]
-   camera_ext_t: [-0.0407294, 2.12344, 1.51071] 
+         [0.9998731051, -0.0087996712, -0.0132798022,
+          0.0141041270, 0.1014031793, 0.9947454716,
+          -0.0074068185, -0.9948064934, 0.1015144272]
+   camera_ext_t: [-0.03227800, 0.67139100, 1.76128000]
+
    # Rough extrinsic value, form CAD model, is not correct enough, but can be online calibrated in our datasets.
    # camera_ext_R:
    #    [0, 0, 1,
@@ -44,3 +54,7 @@ r3live_lio:
    filter_size_surf: 0.30
    filter_size_surf_z: 0.30
    filter_size_map: 0.30
+   lidar_ext_R: [ 1,0,0,
+                  0,1,0,
+                  0,0,1]
+   lidar_ext_t: [ 0, 0, 0] # lidar to imu
